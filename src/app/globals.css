@@ -1,26 +1,110 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ============================================
+   DESIGN TOKENS — Les Traiteurs Engagés
+   ============================================ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-cream: #FAF7F2;
+  --color-terracotta: #C4714A;
+  --color-coral-red: #FF5455;
+  --color-dark-terracotta: #8B4A3D;
+  --color-olive: #6B7C4A;
+  --color-light-pink: #FFE8E8;
+  --color-white: #FFFFFF;
+  --color-dark: #1A1A1A;
+  --color-gray-light: #F5F5F5;
+  --color-gray-medium: #9CA3AF;
+
+  /* Fonts */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-marianne), system-ui, sans-serif;
+  --font-sans: var(--font-marianne), system-ui, sans-serif;
+
+  /* Background */
+  --color-background: var(--color-cream);
+  --color-foreground: var(--color-dark);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================
+   POLICE MARIANNE (chargement local)
+   Placer les fichiers dans /public/fonts/Marianne/
+   Téléchargement : https://www.systeme-de-design.gouv.fr/fondamentaux/typographie
+   ============================================ */
+@font-face {
+  font-family: "Marianne";
+  src: url("/fonts/Marianne/Marianne-Light.woff2") format("woff2"),
+       url("/fonts/Marianne/Marianne-Light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Marianne";
+  src: url("/fonts/Marianne/Marianne-Regular.woff2") format("woff2"),
+       url("/fonts/Marianne/Marianne-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Marianne";
+  src: url("/fonts/Marianne/Marianne-Medium.woff2") format("woff2"),
+       url("/fonts/Marianne/Marianne-Medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Marianne";
+  src: url("/fonts/Marianne/Marianne-Bold.woff2") format("woff2"),
+       url("/fonts/Marianne/Marianne-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+:root {
+  --background: #FAF7F2;
+  --foreground: #1A1A1A;
+}
+
+html {
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 body {
-  background: var(--background);
+  font-family: "Marianne", system-ui, sans-serif;
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #C4714A40;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C4714A80;
 }

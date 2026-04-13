@@ -15,6 +15,7 @@ import {
   BarChart2,
   LogOut,
   ChefHat,
+  HelpCircle,
 } from "lucide-react";
 import type { UserRole } from "@/types/database";
 
@@ -33,12 +34,11 @@ type NavItem = {
 
 const catererNav: NavItem[] = [
   { label: "Tableau de bord", href: "/caterer/dashboard", icon: LayoutDashboard },
-  { label: "Demandes & Devis", href: "/caterer/requests", icon: FileText },
-  { label: "Commandes", href: "/caterer/orders", icon: ShoppingBag },
-  { label: "Facturation", href: "/caterer/invoices", icon: Receipt },
+  { label: "Liste des demandes", href: "/caterer/requests", icon: FileText },
+  { label: "Liste des commandes", href: "/caterer/orders", icon: ShoppingBag },
+  { label: "Fiche traiteur", href: "/caterer/profile", icon: ChefHat },
   { label: "Messagerie", href: "/caterer/messages", icon: MessageSquare },
-  { label: "Mon profil", href: "/caterer/profile", icon: ChefHat },
-  { label: "Paramètres", href: "/caterer/settings", icon: Settings },
+  { label: "Besoin d'aide", href: "/caterer/help", icon: HelpCircle },
 ];
 
 const clientUserNav: NavItem[] = [
@@ -73,68 +73,45 @@ const adminNav: NavItem[] = [
 
 function getNav(role: UserRole): NavItem[] {
   switch (role) {
-    case "caterer":
-      return catererNav;
-    case "client_admin":
-      return clientAdminNav;
-    case "client_user":
-      return clientUserNav;
-    case "super_admin":
-      return adminNav;
+    case "caterer": return catererNav;
+    case "client_admin": return clientAdminNav;
+    case "client_user": return clientUserNav;
+    case "super_admin": return adminNav;
   }
 }
 
-function getRoleLabel(role: UserRole): string {
-  switch (role) {
-    case "caterer":
-      return "Espace Traiteur";
-    case "client_admin":
-      return "Espace Client — Admin";
-    case "client_user":
-      return "Espace Client";
-    case "super_admin":
-      return "Administration";
-  }
-}
-
-export default function Sidebar({
-  role,
-  catererName,
-  companyName,
-  userName,
-}: SidebarProps) {
+export default function Sidebar({ role, catererName, companyName, userName }: SidebarProps) {
   const pathname = usePathname();
   const navItems = getNav(role);
   const entityName = catererName ?? companyName ?? "";
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-dark text-white shrink-0">
-      {/* Logo + identité */}
-      <div className="px-6 py-6 border-b border-white/10">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-terracotta flex items-center justify-center shrink-0">
-            <ChefHat size={16} className="text-white" />
-          </div>
-          <span className="font-display text-sm font-semibold leading-tight">
-            Les Traiteurs<br />Engagés
-          </span>
+    <aside
+      className="flex flex-col bg-white shrink-0 h-screen sticky top-0"
+      style={{ width: "241px", borderRight: "1px solid #f2f2f2" }}
+    >
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-6 py-6">
+        <div className="shrink-0 w-12 h-12 relative">
+          <ChefHat size={28} className="text-navy" />
         </div>
-
-        {/* Badge rôle */}
-        <div className="inline-flex items-center px-2 py-1 rounded-full bg-white/10 text-xs text-white/70">
-          {getRoleLabel(role)}
-        </div>
-
-        {/* Nom de l'entité */}
-        {entityName && (
-          <p className="mt-2 text-sm font-medium text-white truncate">
-            {entityName}
-          </p>
-        )}
+        <span
+          className="font-display font-bold text-navy leading-tight text-base"
+          style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+        >
+          Les<br />Traiteurs<br />Engagés
+        </span>
       </div>
 
+      {/* Nom de l'entité */}
+      {entityName && (
+        <div className="px-6 pb-4">
+          <p className="text-xs text-gray-medium truncate">{entityName}</p>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 flex flex-col overflow-y-auto py-2">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -146,40 +123,35 @@ export default function Sidebar({
               key={item.href}
               href={item.href}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                transition-colors duration-150
-                ${
-                  isActive
-                    ? "bg-terracotta text-white"
-                    : "text-white/60 hover:text-white hover:bg-white/10"
+                flex items-center gap-3 px-6 py-4 text-sm transition-colors duration-150
+                ${isActive
+                  ? "border-l-[6px] border-navy text-navy font-bold"
+                  : "border-l-[6px] border-transparent text-black hover:text-navy hover:bg-gray-light"
                 }
               `}
+              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
             >
-              <Icon size={18} className="shrink-0" />
+              <Icon size={16} className="shrink-0 opacity-0 absolute" aria-hidden />
               <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer : user + déconnexion */}
-      <div className="px-3 py-4 border-t border-white/10 space-y-1">
-        <Link
-          href="/profile"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-        >
-          <div className="w-7 h-7 rounded-full bg-terracotta/30 flex items-center justify-center shrink-0">
-            <User size={14} />
+      {/* Footer */}
+      <div className="px-4 py-4 border-t border-gray-100 space-y-1">
+        {userName && (
+          <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-medium truncate">
+            <User size={14} className="shrink-0" />
+            <span className="truncate">{userName}</span>
           </div>
-          <span className="truncate">{userName ?? "Mon compte"}</span>
-        </Link>
-
+        )}
         <form action="/auth/signout" method="POST">
           <button
             type="submit"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded text-sm text-gray-medium hover:text-dark hover:bg-gray-light transition-colors"
           >
-            <LogOut size={18} className="shrink-0" />
+            <LogOut size={14} className="shrink-0" />
             <span>Déconnexion</span>
           </button>
         </form>

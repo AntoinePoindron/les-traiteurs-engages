@@ -14,7 +14,7 @@ interface UpcomingOrdersPanelProps {
 
 export default function UpcomingOrdersPanel({ orders }: UpcomingOrdersPanelProps) {
   return (
-    <div className="bg-white rounded-lg p-6 flex flex-col gap-6" style={{ width: "324px" }}>
+    <div className="bg-white rounded-lg p-6 flex flex-col gap-6 w-full md:w-[324px]">
       <h2
         className="font-display font-bold text-2xl text-black"
         style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}

@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Calendar, Euro, Building2 } from "lucide-react";
+import { Calendar, Euro, Building2, ChevronLeft } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type {
   QuoteRequest,
@@ -224,6 +224,16 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           className="mx-auto flex flex-col gap-6"
           style={{ maxWidth: "1020px" }}
         >
+          {/* Back */}
+          <Link
+            href="/caterer/requests"
+            className="inline-flex items-center gap-1 text-xs font-bold text-navy w-fit"
+            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+          >
+            <ChevronLeft size={16} />
+            Retour à la liste
+          </Link>
+
           {/* Page title */}
           <h1
             className="font-display font-bold text-4xl text-black"
@@ -233,11 +243,11 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           </h1>
 
           {/* Main grid */}
-          <div className="flex gap-6 items-start">
+          <div className="flex flex-col md:flex-row gap-6 items-start">
 
             {/* ── Left : details card ── */}
             <div
-              className="flex-1 min-w-0 bg-white rounded-lg p-6 flex flex-col gap-6"
+              className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6"
             >
               {/* Status badge */}
               <div>
@@ -339,8 +349,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
             {/* ── Right : action panel ── */}
             <div
-              className="bg-white rounded-lg p-6 flex flex-col gap-6 shrink-0"
-              style={{ width: "324px" }}
+              className="bg-white rounded-lg p-6 flex flex-col gap-6 w-full md:w-[324px] md:shrink-0"
             >
               {/* Company + contact */}
               <div className="flex flex-col gap-2">

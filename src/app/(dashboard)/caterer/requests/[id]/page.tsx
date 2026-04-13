@@ -1,17 +1,7 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import {
-  ChevronLeft,
-  Calendar,
-  Clock,
-  MapPin,
-  Users,
-  Euro,
-  UtensilsCrossed,
-  Wine,
-  Briefcase,
-} from "lucide-react";
+import { Calendar, Euro, Building2 } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import type {
   QuoteRequest,
@@ -31,7 +21,13 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
   autre: "Apéritif",
 };
 
-type StatusVariant = "new" | "pending" | "sent" | "accepted" | "refused" | "expired";
+type StatusVariant =
+  | "new"
+  | "pending"
+  | "sent"
+  | "accepted"
+  | "refused"
+  | "expired";
 
 function resolveStatusVariant(
   qrcStatus: QuoteRequestCatererStatus,
@@ -46,6 +42,36 @@ function resolveStatusVariant(
   return "pending";
 }
 
+// ── Server action : refuser la demande ──────────────────────
+async function refuseRequest(formData: FormData) {
+  "use server";
+  const requestId = formData.get("requestId") as string;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: profileData } = await supabase
+    .from("users")
+    .select("caterer_id")
+    .eq("id", user!.id)
+    .single();
+
+  const catererId =
+    (profileData as { caterer_id: string | null } | null)?.caterer_id ?? "";
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("quote_request_caterers")
+    .update({ status: "rejected" })
+    .eq("quote_request_id", requestId)
+    .eq("caterer_id", catererId);
+
+  redirect("/caterer/requests");
+}
+
+// ── Page ────────────────────────────────────────────────────
 export default async function CatererRequestDetailPage({ params }: PageProps) {
   const { id } = await params;
 
@@ -63,7 +89,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
   const catererId =
     (profileData as { caterer_id: string | null } | null)?.caterer_id ?? "";
 
-  // Fetch assignment + full request details
+  // Fetch assignment + full request + company + client user
   const { data: assignmentData } = await supabase
     .from("quote_request_caterers")
     .select(`
@@ -77,7 +103,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
         dietary_kosher, dietary_gluten_free, dietary_other,
         drinks_included, drinks_details,
         service_waitstaff, service_equipment, service_decoration, service_other,
-        description, status, created_at
+        description, status, created_at,
+        companies ( name ),
+        users ( first_name, last_name, email )
       )
     `)
     .eq("quote_request_id", id)
@@ -91,14 +119,23 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     status: QuoteRequestCatererStatus;
     responded_at: string | null;
     response_rank: number | null;
-    quote_requests: QuoteRequest | null;
+    quote_requests:
+      | (QuoteRequest & {
+          companies: { name: string } | null;
+          users: {
+            first_name: string | null;
+            last_name: string | null;
+            email: string;
+          } | null;
+        })
+      | null;
   };
 
   const assignment = assignmentData as AssignmentRow;
   const request = assignment.quote_requests;
   if (!request) notFound();
 
-  // Fetch most recent quote for this caterer on this request
+  // Fetch existing quote
   const { data: quoteData } = await supabase
     .from("quotes")
     .select(
@@ -111,26 +148,71 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     .maybeSingle();
 
   const quote = quoteData as Quote | null;
+
+  // Fetch order history for this caterer + company
+  const companyId = (request as { company_id?: string }).company_id;
+  type HistoryOrder = {
+    id: string;
+    delivery_date: string;
+    quotes: { total_amount_ht: number; quote_requests: { title: string; company_id: string } | null } | null;
+  };
+  let history: HistoryOrder[] = [];
+  if (companyId) {
+    const { data: historyData } = await supabase
+      .from("orders")
+      .select(`
+        id, delivery_date,
+        quotes!inner ( total_amount_ht, caterer_id,
+          quote_requests!inner ( title, company_id )
+        )
+      `)
+      .eq("quotes.caterer_id", catererId)
+      .in("status", ["delivered", "invoiced", "paid"])
+      .neq("quotes.quote_requests.id", id)
+      .order("delivery_date", { ascending: false })
+      .limit(3);
+
+    if (historyData) {
+      history = (historyData as unknown as HistoryOrder[]).filter(
+        (o) =>
+          o.quotes?.quote_requests?.company_id === companyId
+      );
+    }
+  }
+
   const statusVariant = resolveStatusVariant(assignment.status, quote?.status);
 
   const eventDate = new Date(request.event_date).toLocaleDateString("fr-FR", {
-    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
 
-  const dietaryItems: string[] = [];
-  if (request.dietary_vegetarian) dietaryItems.push("Végétarien");
-  if (request.dietary_vegan) dietaryItems.push("Végan");
-  if (request.dietary_halal) dietaryItems.push("Halal");
-  if (request.dietary_kosher) dietaryItems.push("Kasher");
-  if (request.dietary_gluten_free) dietaryItems.push("Sans gluten");
+  const companyName = request.companies?.name;
+  const clientUser = request.users;
+  const clientName = clientUser
+    ? `${clientUser.first_name ?? ""} ${clientUser.last_name ?? ""}`.trim()
+    : null;
 
-  const serviceItems: string[] = [];
-  if (request.service_waitstaff) serviceItems.push("Personnel de service");
-  if (request.service_equipment) serviceItems.push("Matériel / vaisselle");
-  if (request.service_decoration) serviceItems.push("Décoration");
+  // Dietary items
+  const dietaryRows: { label: string }[] = [];
+  if (request.dietary_vegetarian) dietaryRows.push({ label: "Végétarien" });
+  if (request.dietary_vegan) dietaryRows.push({ label: "Végan" });
+  if (request.dietary_halal) dietaryRows.push({ label: "Halal" });
+  if (request.dietary_kosher) dietaryRows.push({ label: "Kasher" });
+  if (request.dietary_gluten_free) dietaryRows.push({ label: "Sans gluten" });
+
+  const showDrinks =
+    request.drinks_included || Boolean(request.drinks_details);
+  const showServices =
+    request.service_waitstaff ||
+    request.service_equipment ||
+    request.service_decoration ||
+    Boolean(request.service_other);
+  const showDietary = dietaryRows.length > 0 || Boolean(request.dietary_other);
+  const showMessage = Boolean(request.description);
+
+  const isNew = assignment.status === "selected";
 
   return (
     <main
@@ -142,238 +224,263 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           className="mx-auto flex flex-col gap-6"
           style={{ maxWidth: "1020px" }}
         >
-          {/* Back */}
-          <Link
-            href="/caterer/requests"
-            className="inline-flex items-center gap-1 text-xs font-bold text-navy w-fit"
-            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+          {/* Page title */}
+          <h1
+            className="font-display font-bold text-4xl text-black"
+            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
           >
-            <ChevronLeft size={16} />
-            Retour à la liste
-          </Link>
-
-          {/* Header */}
-          <div className="flex flex-col gap-2">
-            <StatusBadge variant={statusVariant} />
-            <h1
-              className="font-display font-bold text-4xl text-black"
-              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-            >
-              {request.title}
-            </h1>
-            <p
-              className="text-xs text-[#313131]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              Demande reçue le{" "}
-              {new Date(request.created_at).toLocaleDateString("fr-FR")}
-            </p>
-          </div>
+            {request.title}
+          </h1>
 
           {/* Main grid */}
           <div className="flex gap-6 items-start">
-            {/* Left : request details */}
-            <div className="flex-1 min-w-0 flex flex-col gap-4">
 
-              {/* Event info */}
-              <section className="bg-white rounded-lg p-6 flex flex-col gap-5">
-                <h2
-                  className="font-display font-bold text-2xl text-black"
-                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                >
-                  Détails de l'événement
-                </h2>
+            {/* ── Left : details card ── */}
+            <div
+              className="flex-1 min-w-0 bg-white rounded-lg p-6 flex flex-col gap-6"
+            >
+              {/* Status badge */}
+              <div>
+                <StatusBadge variant={statusVariant} />
+              </div>
 
-                <p
-                  className="text-sm font-bold"
-                  style={{
-                    color: "#FF5455",
-                    fontFamily: "Marianne, system-ui, sans-serif",
-                  }}
-                >
-                  {MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type}
-                  {request.is_full_day && request.meal_type_secondary
-                    ? ` + ${MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary} (journée complète)`
-                    : ""}
-                </p>
-
-                <div className="grid grid-cols-2 gap-x-8 gap-y-5">
-                  <DetailRow
-                    icon={<Calendar size={16} />}
-                    label="Date"
-                    value={eventDate}
+              {/* Détails de l'événement */}
+              <Section title="Détails de l'événement">
+                <Row
+                  label="Type de prestation"
+                  value={
+                    (MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type) +
+                    (request.is_full_day && request.meal_type_secondary
+                      ? ` + ${MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}`
+                      : "")
+                  }
+                />
+                <Row label="Date" value={eventDate} />
+                {(request.event_start_time || request.event_end_time) && (
+                  <Row
+                    label="Horaires"
+                    value={[request.event_start_time, request.event_end_time]
+                      .filter(Boolean)
+                      .join(" - ")}
                   />
-                  {(request.event_start_time || request.event_end_time) && (
-                    <DetailRow
-                      icon={<Clock size={16} />}
-                      label="Horaires"
-                      value={[
-                        request.event_start_time,
-                        request.event_end_time,
-                      ]
+                )}
+                <Row label="Lieu" value={request.event_address} />
+                <Row
+                  label="Nombre de personnes"
+                  value={`${request.guest_count} personnes`}
+                />
+              </Section>
+
+              {/* Boissons */}
+              {showDrinks && (
+                <>
+                  <Divider />
+                  <Section title="Boissons">
+                    {request.drinks_details ? (
+                      request.drinks_details
+                        .split(/[,\n]+/)
+                        .map((item) => item.trim())
                         .filter(Boolean)
-                        .join(" – ")}
-                    />
-                  )}
-                  <DetailRow
-                    icon={<MapPin size={16} />}
-                    label="Lieu"
-                    value={request.event_address}
-                  />
-                  <DetailRow
-                    icon={<Users size={16} />}
-                    label="Couverts"
-                    value={`${request.guest_count} personnes`}
-                  />
-                  {request.budget_global != null && (
-                    <DetailRow
-                      icon={<Euro size={16} />}
-                      label="Budget total"
-                      value={`${request.budget_global.toLocaleString("fr-FR")} €${
-                        request.budget_flexibility &&
-                        request.budget_flexibility !== "none"
-                          ? ` (±${request.budget_flexibility} %)`
-                          : ""
-                      }`}
-                    />
-                  )}
-                  {request.budget_per_person != null && (
-                    <DetailRow
-                      icon={<Euro size={16} />}
-                      label="Budget / personne"
-                      value={`${request.budget_per_person.toLocaleString("fr-FR")} €`}
-                    />
-                  )}
-                </div>
+                        .map((item, i) => <Row key={i} label={item} />)
+                    ) : (
+                      <Row label="Boissons incluses" />
+                    )}
+                  </Section>
+                </>
+              )}
 
-                {request.description && (
-                  <div>
+              {/* Services additionnels */}
+              {showServices && (
+                <>
+                  <Divider />
+                  <Section title="Services additionnels">
+                    {request.service_waitstaff && <Row label="Personnel" />}
+                    {request.service_equipment && (
+                      <Row label="Matériel" value={request.service_other ?? undefined} />
+                    )}
+                    {request.service_decoration && <Row label="Décoration" />}
+                    {request.service_other && !request.service_equipment && (
+                      <Row label="Autre" value={request.service_other} />
+                    )}
+                  </Section>
+                </>
+              )}
+
+              {/* Contraintes alimentaires */}
+              {showDietary && (
+                <>
+                  <Divider />
+                  <Section title="Préférences et contraintes alimentaires">
+                    {dietaryRows.map((row) => (
+                      <Row key={row.label} label={row.label} />
+                    ))}
+                    {request.dietary_other && (
+                      <Row label="Autre" value={request.dietary_other} />
+                    )}
+                  </Section>
+                </>
+              )}
+
+              {/* Message du client */}
+              {showMessage && (
+                <>
+                  <Divider />
+                  <Section title="Message du client">
                     <p
-                      className="text-xs font-bold text-black mb-1"
-                      style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-                    >
-                      Description
-                    </p>
-                    <p
-                      className="text-sm text-[#313131]"
+                      className="text-xs text-black whitespace-pre-wrap italic"
                       style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                     >
                       {request.description}
                     </p>
-                  </div>
-                )}
-              </section>
-
-              {/* Dietary + drinks */}
-              {(dietaryItems.length > 0 ||
-                request.dietary_other ||
-                request.drinks_included) && (
-                <section className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                  <h2
-                    className="font-display font-bold text-2xl text-black"
-                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                  >
-                    Contraintes alimentaires & boissons
-                  </h2>
-
-                  {dietaryItems.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      <p
-                        className="text-xs font-bold text-black"
-                        style={{
-                          fontFamily: "Marianne, system-ui, sans-serif",
-                        }}
-                      >
-                        Régimes alimentaires
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {dietaryItems.map((item) => (
-                          <Chip
-                            key={item}
-                            label={item}
-                            icon={<UtensilsCrossed size={12} />}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {request.dietary_other && (
-                    <div>
-                      <p
-                        className="text-xs font-bold text-black mb-1"
-                        style={{
-                          fontFamily: "Marianne, system-ui, sans-serif",
-                        }}
-                      >
-                        Autre contrainte
-                      </p>
-                      <p
-                        className="text-sm text-[#313131]"
-                        style={{
-                          fontFamily: "Marianne, system-ui, sans-serif",
-                        }}
-                      >
-                        {request.dietary_other}
-                      </p>
-                    </div>
-                  )}
-
-                  {request.drinks_included && (
-                    <div className="flex items-center gap-2">
-                      <Wine size={16} className="text-[#313131]" />
-                      <p
-                        className="text-sm text-[#313131]"
-                        style={{
-                          fontFamily: "Marianne, system-ui, sans-serif",
-                        }}
-                      >
-                        Boissons incluses
-                        {request.drinks_details
-                          ? ` — ${request.drinks_details}`
-                          : ""}
-                      </p>
-                    </div>
-                  )}
-                </section>
-              )}
-
-              {/* Services */}
-              {(serviceItems.length > 0 || request.service_other) && (
-                <section className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                  <h2
-                    className="font-display font-bold text-2xl text-black"
-                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                  >
-                    Services additionnels
-                  </h2>
-                  <div className="flex flex-wrap gap-2">
-                    {serviceItems.map((item) => (
-                      <Chip
-                        key={item}
-                        label={item}
-                        icon={<Briefcase size={12} />}
-                      />
-                    ))}
-                    {request.service_other && (
-                      <Chip
-                        label={request.service_other}
-                        icon={<Briefcase size={12} />}
-                      />
-                    )}
-                  </div>
-                </section>
+                  </Section>
+                </>
               )}
             </div>
 
-            {/* Right : action panel */}
-            <div className="shrink-0" style={{ width: "324px" }}>
-              <ActionPanel
-                qrcStatus={assignment.status}
-                quote={quote}
-                requestId={id}
-                responseRank={assignment.response_rank}
-              />
+            {/* ── Right : action panel ── */}
+            <div
+              className="bg-white rounded-lg p-6 flex flex-col gap-6 shrink-0"
+              style={{ width: "324px" }}
+            >
+              {/* Company + contact */}
+              <div className="flex flex-col gap-2">
+                <Building2 size={24} className="text-[#C4714A]" />
+                <p
+                  className="font-display font-bold text-2xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  {companyName ?? "—"}
+                </p>
+                {clientName && (
+                  <div
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-[#313131] w-fit"
+                    style={{
+                      backgroundColor: "#F5F1E8",
+                      fontFamily: "Marianne, system-ui, sans-serif",
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    {clientName}
+                  </div>
+                )}
+              </div>
+
+              {/* Budget */}
+              <div className="flex flex-col gap-4">
+                {request.budget_global != null && (
+                  <Row
+                    label="Budget total"
+                    value={`${request.budget_global.toLocaleString("fr-FR")} €`}
+                  />
+                )}
+                {request.budget_per_person != null && (
+                  <Row
+                    label="Budget par personne"
+                    value={`${request.budget_per_person.toLocaleString("fr-FR")} €`}
+                  />
+                )}
+              </div>
+
+              {/* CTAs */}
+              {isNew && (
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={`/caterer/requests/${id}/quote/new`}
+                    className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+                    style={{
+                      backgroundColor: "#1A3A52",
+                      fontFamily: "Marianne, system-ui, sans-serif",
+                    }}
+                  >
+                    Accepter et envoyer un devis
+                  </Link>
+                  <form action={refuseRequest}>
+                    <input type="hidden" name="requestId" value={id} />
+                    <button
+                      type="submit"
+                      className="w-full flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-navy hover:bg-gray-50 transition-colors"
+                      style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                    >
+                      Refuser la demande
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Devis existant (si non nouvelle) */}
+              {!isNew && quote && (
+                <div className="flex flex-col gap-2">
+                  <QuoteSummary quote={quote} />
+                </div>
+              )}
+
+              {/* Historique avec ce client */}
+              <>
+                <Divider />
+                <div className="flex flex-col gap-6">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Historique avec ce client
+                  </p>
+                  {history.length === 0 ? (
+                    <p
+                      className="text-xs text-[#313131]"
+                      style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                    >
+                      Aucune commande précédente.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-6">
+                      {history.map((o) => (
+                        <div key={o.id} className="flex flex-col gap-3">
+                          <p
+                            className="text-xs font-bold text-black"
+                            style={{
+                              fontFamily: "Marianne, system-ui, sans-serif",
+                            }}
+                          >
+                            {o.quotes?.quote_requests?.title ?? "Commande"}
+                          </p>
+                          <div className="flex items-center gap-1">
+                            <Calendar size={16} className="text-[#313131]" />
+                            <span
+                              className="text-xs text-[#313131]"
+                              style={{
+                                fontFamily: "Marianne, system-ui, sans-serif",
+                              }}
+                            >
+                              {new Date(o.delivery_date).toLocaleDateString(
+                                "fr-FR"
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Euro size={16} className="text-[#313131]" />
+                            <span
+                              className="text-xs text-[#313131]"
+                              style={{
+                                fontFamily: "Marianne, system-ui, sans-serif",
+                              }}
+                            >
+                              {o.quotes?.total_amount_ht.toLocaleString(
+                                "fr-FR"
+                              )}{" "}
+                              €
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             </div>
           </div>
         </div>
@@ -384,188 +491,49 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
 // ── Sub-components ────────────────────────────────────────────
 
-function DetailRow({
-  icon,
-  label,
-  value,
+function Section({
+  title,
+  children,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
+  title: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-[#6B6B6B]">
-        {icon}
+    <div className="flex flex-col gap-4">
+      <p
+        className="font-display font-bold text-xl text-black"
+        style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+      >
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span
+        className="text-xs text-black"
+        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+      >
+        {label}
+      </span>
+      {value && (
         <span
-          className="text-xs"
+          className="text-xs font-bold text-black text-right"
           style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
         >
-          {label}
+          {value}
         </span>
-      </div>
-      <p
-        className="text-sm font-bold text-black"
-        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-      >
-        {value}
-      </p>
+      )}
     </div>
   );
 }
 
-function Chip({
-  label,
-  icon,
-}: {
-  label: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
-      style={{
-        backgroundColor: "#F5F1E8",
-        color: "#1A3A52",
-        fontFamily: "Marianne, system-ui, sans-serif",
-      }}
-    >
-      {icon}
-      {label}
-    </span>
-  );
-}
-
-function ActionPanel({
-  qrcStatus,
-  quote,
-  requestId,
-  responseRank,
-}: {
-  qrcStatus: QuoteRequestCatererStatus;
-  quote: Quote | null;
-  requestId: string;
-  responseRank: number | null;
-}) {
-  // Archivée
-  if (qrcStatus === "rejected") {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
-        <StatusBadge variant="expired" customLabel="Archivée" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Cette demande a été archivée et n'est plus active.
-        </p>
-      </div>
-    );
-  }
-
-  // Nouvelle — pas encore de devis
-  if (qrcStatus === "selected") {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-        <StatusBadge variant="new" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Vous avez reçu cette demande. Créez votre devis pour y répondre.
-        </p>
-        <Link
-          href={`/caterer/requests/${requestId}/quote/new`}
-          className="inline-flex items-center justify-center px-4 py-3 rounded-lg text-sm font-bold text-white transition-opacity hover:opacity-90"
-          style={{
-            backgroundColor: "#1A3A52",
-            fontFamily: "Marianne, system-ui, sans-serif",
-          }}
-        >
-          Créer mon devis
-        </Link>
-      </div>
-    );
-  }
-
-  // Devis soumis mais pas dans la DB (ne devrait pas arriver)
-  if (!quote) {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
-        <StatusBadge variant="pending" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Votre réponse a été enregistrée.
-        </p>
-      </div>
-    );
-  }
-
-  // Devis accepté
-  if (quote.status === "accepted") {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-        <StatusBadge variant="accepted" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Votre devis a été accepté par le client. Une commande a été créée.
-        </p>
-        <QuoteSummary quote={quote} />
-      </div>
-    );
-  }
-
-  // Devis refusé
-  if (quote.status === "refused") {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-        <StatusBadge variant="refused" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Le client n'a pas retenu votre devis.
-        </p>
-        <QuoteSummary quote={quote} />
-      </div>
-    );
-  }
-
-  // Devis expiré
-  if (quote.status === "expired") {
-    return (
-      <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-        <StatusBadge variant="expired" />
-        <p
-          className="text-sm text-[#313131]"
-          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-        >
-          Votre devis a expiré sans réponse du client.
-        </p>
-        <QuoteSummary quote={quote} />
-      </div>
-    );
-  }
-
-  // Devis envoyé / transmis au client
-  const isTransmitted = qrcStatus === "transmitted_to_client";
-  return (
-    <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-      <StatusBadge variant={isTransmitted ? "sent" : "pending"} />
-      <p
-        className="text-sm text-[#313131]"
-        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-      >
-        {isTransmitted
-          ? `Votre devis a été transmis au client${responseRank ? ` (${responseRank}${responseRank === 1 ? "er" : "e"} répondant)` : ""}.`
-          : "Votre devis a été envoyé et est en cours de traitement."}
-      </p>
-      <QuoteSummary quote={quote} />
-    </div>
-  );
+function Divider() {
+  return <div className="border-t border-[#f2f2f2]" />;
 }
 
 function QuoteSummary({ quote }: { quote: Quote }) {
@@ -580,75 +548,28 @@ function QuoteSummary({ quote }: { quote: Quote }) {
       >
         Votre devis
       </p>
-
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span
-            className="text-xs text-[#6B6B6B]"
-            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-          >
-            Montant HT
-          </span>
-          <span
-            className="text-sm font-bold text-black"
-            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-          >
-            {quote.total_amount_ht.toLocaleString("fr-FR")} €
-          </span>
-        </div>
-
+        <Row
+          label="Montant HT"
+          value={`${quote.total_amount_ht.toLocaleString("fr-FR")} €`}
+        />
         {quote.amount_per_person != null && (
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs text-[#6B6B6B]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              Par personne
-            </span>
-            <span
-              className="text-xs text-[#313131]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              {quote.amount_per_person.toLocaleString("fr-FR")} €
-            </span>
-          </div>
+          <Row
+            label="Par personne"
+            value={`${quote.amount_per_person.toLocaleString("fr-FR")} €`}
+          />
         )}
-
         {quote.valorisable_agefiph != null && (
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs text-[#6B6B6B]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              Valorisable AGEFIPH
-            </span>
-            <span
-              className="text-xs font-bold"
-              style={{
-                color: "#6B7C4A",
-                fontFamily: "Marianne, system-ui, sans-serif",
-              }}
-            >
-              {quote.valorisable_agefiph.toLocaleString("fr-FR")} €
-            </span>
-          </div>
+          <Row
+            label="Valorisable AGEFIPH"
+            value={`${quote.valorisable_agefiph.toLocaleString("fr-FR")} €`}
+          />
         )}
-
         {quote.valid_until && (
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs text-[#6B6B6B]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              Valide jusqu'au
-            </span>
-            <span
-              className="text-xs text-[#313131]"
-              style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-            >
-              {new Date(quote.valid_until).toLocaleDateString("fr-FR")}
-            </span>
-          </div>
+          <Row
+            label="Valide jusqu'au"
+            value={new Date(quote.valid_until).toLocaleDateString("fr-FR")}
+          />
         )}
       </div>
     </div>

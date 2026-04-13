@@ -33,15 +33,13 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
   let query = supabase
     .from("quote_request_caterers")
     .select(`
-      id,
       status,
       responded_at,
       quote_requests (
         id, title, event_date, event_address,
         guest_count, budget_global, meal_type,
         users ( first_name, last_name )
-      ),
-      quotes ( status )
+      )
     `)
     .eq("caterer_id", catererId ?? "");
 
@@ -71,13 +69,11 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
 
   // ── Transformation + filtres complémentaires ────────────────
   type Row = {
-    id: string;
     status: string;
     responded_at: string | null;
     quote_requests: (QuoteRequest & {
       users: { first_name: string | null; last_name: string | null } | null;
     }) | null;
-    quotes: { status: string }[] | null;
   };
 
   let requests = (rows ?? [])
@@ -86,14 +82,6 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
       if (!r.quote_requests) return null;
 
       const qr = r.quote_requests;
-      const quoteStatus = Array.isArray(r.quotes) && r.quotes.length > 0
-        ? r.quotes[0].status
-        : null;
-
-      // Filtre accepté / refusé basé sur le statut du devis
-      if (activeFilter === "accepted" && quoteStatus !== "accepted") return null;
-      if (activeFilter === "refused" && quoteStatus !== "refused") return null;
-
       const u = qr.users;
       return {
         ...qr,

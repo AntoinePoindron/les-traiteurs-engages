@@ -55,12 +55,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-terracotta flex items-center justify-center">
-            <ChefHat size={20} className="text-white" />
-          </div>
-          <span className="font-display text-2xl font-semibold text-dark">
-            Les Traiteurs Engagés
-          </span>
+          <img 
+              src="/images/logo-traiteurs-engages.svg" 
+              alt="Logo Les Traiteurs Engagés" 
+            />
         </div>
 
         {/* Card */}

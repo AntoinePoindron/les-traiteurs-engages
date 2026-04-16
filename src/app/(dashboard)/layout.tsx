@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NavWrapper from "@/components/layout/NavWrapper";
-import NotificationCenter from "@/components/layout/NotificationCenter";
 import type { UserRole } from "@/types/database";
 
 export default async function DashboardLayout({
@@ -69,7 +68,6 @@ export default async function DashboardLayout({
         {children}
       </div>
 
-      <NotificationCenter />
     </div>
   );
 }

@@ -1,14 +1,59 @@
 import { createClient } from "@/lib/supabase/server";
-import TopBar from "@/components/layout/TopBar";
-import { Building2, FileText, ShoppingBag, Plus } from "lucide-react";
+import {
+  Building2, FileText, ShoppingBag, ChevronRight,
+  TrendingUp, Users, Euro, ChefHat, LayoutGrid,
+} from "lucide-react";
 import Link from "next/link";
+import StatusBadge from "@/components/ui/StatusBadge";
+import NewRequestDropdown from "@/components/client/NewRequestDropdown";
+import type { QuoteRequestStatus, OrderStatus, UserRole } from "@/types/database";
+
+// ── Constants ──────────────────────────────────────────────────
+
+const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  petit_dejeuner:        "Petit déjeuner",
+  pause_gourmande:       "Pause gourmande",
+  plateaux_repas:        "Plateaux repas",
+  cocktail_dinatoire:    "Cocktail dinatoire",
+  cocktail_dejeunatoire: "Cocktail déjeunatoire",
+  cocktail_aperitif:     "Cocktail apéritif",
+  dejeuner: "Déjeuner", diner: "Dîner", cocktail: "Cocktail", autre: "Autre",
+};
+
+const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"> = {
+  confirmed:  "confirmed",
+  delivered:  "delivered",
+  invoiced:   "invoiced",
+  paid:       "paid",
+  disputed:   "disputed",
+};
+
+type ClientBadgeVariant =
+  | "submitted" | "awaiting_quotes" | "quotes_received"
+  | "quote_accepted" | "completed" | "cancelled";
+
+function resolveVariant(
+  status: QuoteRequestStatus,
+  quotesReceivedCount: number,
+  hasAcceptedQuote: boolean,
+): ClientBadgeVariant {
+  if (status === "cancelled")   return "cancelled";
+  if (status === "completed")   return "completed";
+  if (hasAcceptedQuote)         return "quote_accepted";
+  if (quotesReceivedCount > 0)  return "quotes_received";
+  if (status === "sent_to_caterers") return "awaiting_quotes";
+  return "submitted";
+}
+
+// ── Page ───────────────────────────────────────────────────────
 
 export default async function ClientDashboardPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
+  // Profil + rôle
   const { data: profileData } = await supabase
     .from("users")
     .select("first_name, role, company_id, companies(name)")
@@ -17,95 +62,421 @@ export default async function ClientDashboardPage() {
 
   const profile = profileData as {
     first_name: string | null;
-    role: string;
+    role: UserRole;
     company_id: string | null;
     companies: { name: string } | null;
   } | null;
 
-  const companyName = profile?.companies?.name as string | undefined;
+  const isAdmin = profile?.role === "client_admin";
+  const companyId = profile?.company_id;
+  const companyName = profile?.companies?.name;
+
+  // ── Demandes en cours ──────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count: activeCount } = await (supabase as any)
+    .from("quote_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("client_user_id", user!.id)
+    .not("status", "in", '("completed","cancelled")');
+
+  // ── Commandes confirmées ───────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { count: ordersCount } = await (supabase as any)
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("client_admin_id", user!.id)
+    .eq("status", "confirmed");
+
+  // ── Budget consommé (devis acceptés) ──────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: budgetRows } = await (supabase as any)
+    .from("quotes")
+    .select("total_amount_ht, quote_requests!inner(client_user_id)")
+    .eq("status", "accepted")
+    .eq("quote_requests.client_user_id", user!.id);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const budgetTotal: number = (budgetRows ?? []).reduce((s: number, r: any) => s + Number(r.total_amount_ht ?? 0), 0);
+  const budgetDisplay = budgetTotal > 0
+    ? budgetTotal.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €"
+    : "0 €";
+
+  // ── Dernières demandes ─────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: recentRaw } = await (supabase as any)
+    .from("quote_requests")
+    .select("id, title, status, service_type, meal_type, is_compare_mode, event_date, quote_request_caterers ( status, caterers ( logo_url, name ) ), quotes ( status )")
+    .eq("client_user_id", user!.id)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recentRequests: any[] = recentRaw ?? [];
+
+  // ── Admin only ─────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let recentOrders: any[] = [];
+  let services: { id: string; name: string; annual_budget: number }[] = [];
+  const spendByService: Record<string, number> = {};
+  let totalOrdersActive = 0;
+  let agefiph = 0;
+
+  if (isAdmin && companyId) {
+    // Commandes récentes (toutes statuts)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: ordersRaw } = await (supabase as any)
+      .from("orders")
+      .select(`
+        id, status, delivery_date,
+        quotes!inner (
+          total_amount_ht, valorisable_agefiph,
+          caterers ( name ),
+          quote_requests ( id, title, event_date, company_service_id, service_type, meal_type )
+        )
+      `)
+      .eq("client_admin_id", user!.id)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    recentOrders = ordersRaw ?? [];
+
+    // Commandes actives (confirmed)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count: activeOrders } = await (supabase as any)
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("client_admin_id", user!.id)
+      .eq("status", "confirmed");
+    totalOrdersActive = activeOrders ?? 0;
+
+    // Valorisable AGEFIPH total
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: ageRows } = await (supabase as any)
+      .from("quotes")
+      .select("valorisable_agefiph, quote_requests!inner(client_user_id)")
+      .eq("status", "accepted")
+      .eq("quote_requests.client_user_id", user!.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    agefiph = (ageRows ?? []).reduce((s: number, r: any) => s + Number(r.valorisable_agefiph ?? 0), 0);
+
+    // Services
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: servicesRaw } = await (supabase as any)
+      .from("company_services")
+      .select("id, name, annual_budget")
+      .eq("company_id", companyId)
+      .order("name")
+      .limit(6);
+    services = servicesRaw ?? [];
+
+    // Dépenses par service
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: expOrders } = await (supabase as any)
+      .from("orders")
+      .select(`quotes!inner(total_amount_ht, quote_requests!inner(company_service_id))`)
+      .eq("client_admin_id", user!.id)
+      .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
+    for (const o of expOrders ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sid = (o as any).quotes?.quote_requests?.company_service_id;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const amount = Number((o as any).quotes?.total_amount_ht ?? 0);
+      if (sid) spendByService[sid] = (spendByService[sid] ?? 0) + amount;
+    }
+  }
 
   return (
-    <>
-      <TopBar title="Tableau de bord" />
+    <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
+      <div className="pt-[54px] px-6 pb-12">
+        <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
-      <main className="flex-1 p-6 space-y-6">
-        {/* Accroche */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-terracotta/10 flex items-center justify-center">
-              <Building2 size={24} className="text-terracotta" />
-            </div>
+          {/* Titre + CTA */}
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-semibold text-dark">
-                Bienvenue
-                {profile?.first_name ? `, ${profile.first_name}` : ""} !
-              </h2>
+              <h1
+                className="font-display font-bold text-4xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
+              </h1>
               {companyName && (
-                <p className="text-sm text-gray-medium">{companyName}</p>
+                <p className="text-sm text-[#6B7280] mt-1" style={mFont}>{companyName}</p>
               )}
             </div>
+            <NewRequestDropdown />
           </div>
 
-          <Link
-            href="/client/requests/new"
-            className="flex items-center gap-2 px-4 py-2.5 bg-terracotta text-white rounded-xl text-sm font-medium hover:bg-dark-terracotta transition-colors"
-          >
-            <Plus size={16} />
-            Nouvelle demande
-          </Link>
-        </div>
+          {/* KPI cards */}
+          {isAdmin ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <KpiCard icon={FileText}    label="Demandes en cours"      value={String(activeCount       ?? 0)} href="/client/requests" />
+              <KpiCard icon={ShoppingBag} label="Commandes confirmées"   value={String(totalOrdersActive)}     href="/client/orders" />
+              <KpiCard icon={Building2}   label="Budget consommé"        value={budgetDisplay} />
+              <KpiCard
+                icon={TrendingUp}
+                label="Val. AGEFIPH"
+                value={agefiph > 0 ? agefiph.toLocaleString("fr-FR") + " €" : "—"}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <KpiCard icon={FileText}    label="Demandes en cours"      value={String(activeCount  ?? 0)} href="/client/requests" />
+              <KpiCard icon={ShoppingBag} label="Commandes confirmées"   value={String(ordersCount  ?? 0)} href="/client/orders" />
+              <KpiCard icon={Building2}   label="Budget consommé"        value={budgetDisplay} />
+            </div>
+          )}
 
-        {/* KPI cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <KpiCard icon={FileText} label="Demandes en cours" value="—" />
-          <KpiCard icon={ShoppingBag} label="Commandes confirmées" value="—" />
-          <KpiCard icon={Building2} label="Budget consommé" value="— €" />
-        </div>
+          {/* Layout 2 colonnes pour admin, 1 colonne pour user */}
+          <div className={isAdmin ? "flex flex-col lg:flex-row gap-6 items-start" : "flex flex-col gap-6"}>
 
-        {/* Placeholder dernières demandes */}
-        <div className="bg-white rounded-2xl p-6 border border-gray-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-base font-semibold text-dark">
-              Mes dernières demandes
-            </h3>
-            <Link
-              href="/client/requests"
-              className="text-sm text-terracotta hover:underline"
-            >
-              Voir tout
-            </Link>
+            {/* Colonne gauche : demandes récentes */}
+            <div className="flex-1 min-w-0 bg-white rounded-lg p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Dernières demandes
+                </p>
+                <Link
+                  href="/client/requests"
+                  className="text-xs font-bold text-[#1A3A52] hover:opacity-70 transition-opacity"
+                  style={mFont}
+                >
+                  Voir tout
+                </Link>
+              </div>
+
+              {recentRequests.length === 0 ? (
+                <div className="py-8 text-center flex flex-col items-center gap-2">
+                  <p className="text-sm text-[#6B7280]" style={mFont}>Aucune demande pour le moment.</p>
+                  <Link
+                    href="/client/requests/new"
+                    className="text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70 transition-opacity"
+                    style={mFont}
+                  >
+                    Déposer ma première demande
+                  </Link>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {recentRequests.map((req: any, i: number) => {
+                    const qrcList     = Array.isArray(req.quote_request_caterers) ? req.quote_request_caterers : [];
+                    const quoteList   = Array.isArray(req.quotes) ? req.quotes : [];
+                    const receivedCount = qrcList.filter((q: any) => q.status === "transmitted_to_client").length;
+                    const hasAccepted   = quoteList.some((q: any) => q.status === "accepted");
+                    const variant       = resolveVariant(req.status as QuoteRequestStatus, receivedCount, hasAccepted);
+                    const serviceLabel  = SERVICE_TYPE_LABELS[req.service_type ?? ""] ?? SERVICE_TYPE_LABELS[req.meal_type ?? ""] ?? "—";
+                    const eventDate     = req.event_date
+                      ? new Date(req.event_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
+                      : null;
+                    const firstCaterer  = qrcList[0]?.caterers ?? null;
+
+                    return (
+                      <Link
+                        key={req.id}
+                        href={`/client/requests/${req.id}`}
+                        className="flex items-center gap-3 py-3.5 hover:bg-[#F5F1E8] -mx-2 px-2 rounded-lg transition-colors group"
+                        style={{ borderTop: i > 0 ? "1px solid #F3F4F6" : "none" }}
+                      >
+                        {/* Carré décoratif */}
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F5F1E8" }}>
+                          {req.is_compare_mode
+                            ? <LayoutGrid size={15} style={{ color: "#1A3A52" }} />
+                            : <ChefHat    size={15} style={{ color: "#1A3A52" }} />
+                          }
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <p className="text-sm font-bold text-black truncate" style={mFont}>
+                              {serviceLabel}
+                            </p>
+                            <p className="text-xs text-[#6B7280]" style={mFont}>
+                              {serviceLabel}{eventDate ? ` · ${eventDate}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <StatusBadge variant={variant} />
+                            <ChevronRight size={14} style={{ color: "#D1D5DB" }} />
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Colonne droite : admin seulement */}
+            {isAdmin && (
+              <div className="flex flex-col gap-4 w-full lg:w-[340px] lg:shrink-0">
+
+                {/* Commandes récentes */}
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <p
+                      className="font-display font-bold text-xl text-black"
+                      style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                    >
+                      Commandes récentes
+                    </p>
+                    <Link href="/client/orders" className="text-xs font-bold text-[#1A3A52] hover:opacity-70" style={mFont}>
+                      Voir tout
+                    </Link>
+                  </div>
+
+                  {recentOrders.length === 0 ? (
+                    <p className="text-sm text-[#6B7280] py-2" style={mFont}>Aucune commande.</p>
+                  ) : (
+                    <div className="flex flex-col">
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {recentOrders.map((order: any, i: number) => {
+                        const q  = order.quotes;
+                        const qr = q?.quote_requests;
+                        const prestationLabel =
+                          SERVICE_TYPE_LABELS[qr?.service_type ?? ""] ||
+                          SERVICE_TYPE_LABELS[qr?.meal_type ?? ""] ||
+                          qr?.service_type || qr?.meal_type || "—";
+                        return (
+                          <Link
+                            key={order.id}
+                            href={`/client/orders/${order.id}`}
+                            className="flex items-center justify-between gap-3 py-3 -mx-2 px-2 hover:bg-[#F5F1E8] rounded-lg transition-colors"
+                            style={{ borderTop: i > 0 ? "1px solid #F3F4F6" : "none" }}
+                          >
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              <div className="flex items-baseline gap-1.5 min-w-0">
+                                <p className="text-sm font-bold text-black truncate" style={mFont}>
+                                  {prestationLabel}
+                                </p>
+                                {q?.caterers?.name && (
+                                  <p className="text-xs text-[#9CA3AF] truncate shrink-0" style={mFont}>
+                                    {q.caterers.name}
+                                  </p>
+                                )}
+                              </div>
+                              <p className="text-xs text-[#6B7280]" style={mFont}>
+                                {q?.caterers?.name}
+                                {q?.total_amount_ht ? ` · ${Number(q.total_amount_ht).toLocaleString("fr-FR")} €` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <StatusBadge variant={ORDER_STATUS_VARIANT[order.status as OrderStatus]} />
+                              <ChevronRight size={14} style={{ color: "#D1D5DB" }} />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Dépenses par service */}
+                {services.length > 0 && (
+                  <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <p
+                        className="font-display font-bold text-xl text-black"
+                        style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                      >
+                        Dépenses par service
+                      </p>
+                      <Link href="/client/team?tab=depenses" className="text-xs font-bold text-[#1A3A52] hover:opacity-70" style={mFont}>
+                        Détail
+                      </Link>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      {services.map((service) => {
+                        const spent  = spendByService[service.id] ?? 0;
+                        const budget = service.annual_budget ?? 0;
+                        const pct    = budget > 0 ? Math.min(100, (spent / budget) * 100) : null;
+                        const barColor = pct == null ? "#1A3A52" : pct > 90 ? "#DC2626" : pct > 70 ? "#F59E0B" : "#1A3A52";
+
+                        return (
+                          <div key={service.id} className="flex flex-col gap-1.5">
+                            <div className="flex justify-between items-baseline">
+                              <p className="text-xs font-bold text-black truncate flex-1 mr-2" style={mFont}>{service.name}</p>
+                              <p className="text-xs text-[#6B7280] shrink-0" style={mFont}>
+                                {spent.toLocaleString("fr-FR")} €
+                                {budget > 0 && <span className="text-[#D1D5DB]"> / {budget.toLocaleString("fr-FR")} €</span>}
+                              </p>
+                            </div>
+                            <div className="h-1.5 bg-[#F3F4F6] rounded-full overflow-hidden">
+                              {(spent > 0 || pct == null) && (
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{ width: pct != null ? `${pct}%` : "3px", backgroundColor: barColor }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+                )}
+
+                {/* Lien Équipe si pas encore de services */}
+                {services.length === 0 && (
+                  <Link
+                    href="/client/team"
+                    className="bg-white rounded-lg p-6 flex items-center gap-4 hover:shadow-sm transition-shadow"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F0F4F7" }}>
+                      <Users size={18} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-black" style={mFont}>Configurer l'équipe</p>
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        Créez vos services et ajoutez vos collaborateurs pour suivre les dépenses.
+                      </p>
+                    </div>
+                    <ChevronRight size={14} style={{ color: "#D1D5DB" }} />
+                  </Link>
+                )}
+
+              </div>
+            )}
           </div>
-          <p className="text-sm text-gray-medium">
-            Aucune demande pour le moment.{" "}
-            <Link
-              href="/client/requests/new"
-              className="text-terracotta hover:underline"
-            >
-              Déposer une demande
-            </Link>
-          </p>
+
         </div>
-      </main>
-    </>
+      </div>
+    </main>
   );
 }
+
+// ── KpiCard ────────────────────────────────────────────────────
 
 function KpiCard({
   icon: Icon,
   label,
   value,
+  href,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
+  href?: string;
 }) {
-  return (
-    <div className="bg-white rounded-2xl p-5 border border-gray-200">
-      <div className="w-10 h-10 rounded-lg bg-terracotta/10 flex items-center justify-center mb-3">
-        <Icon size={20} className="text-terracotta" />
+  const inner = (
+    <div className={`bg-white rounded-lg p-5 flex flex-col gap-3 ${href ? "hover:shadow-sm transition-shadow" : ""}`}>
+      <div
+        className="w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: "#F0F4F7" }}
+      >
+        <Icon size={18} style={{ color: "#1A3A52" }} />
       </div>
-      <p className="text-2xl font-display font-semibold text-dark">{value}</p>
-      <p className="text-sm text-gray-medium mt-0.5">{label}</p>
+      <div>
+        <p className="font-display font-bold text-3xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+          {value}
+        </p>
+        <p className="text-xs text-[#6B7280] mt-0.5" style={mFont}>{label}</p>
+      </div>
     </div>
   );
+  if (href) return <Link href={href}>{inner}</Link>;
+  return inner;
 }

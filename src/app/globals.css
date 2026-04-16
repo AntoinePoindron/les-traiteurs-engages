@@ -96,6 +96,19 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-fraunces), Georgia, serif;
 }
 
+/* Cursor pointer sur tous les éléments interactifs */
+@layer base {
+  button,
+  [role="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="button"],
+  label[for],
+  select {
+    cursor: pointer;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

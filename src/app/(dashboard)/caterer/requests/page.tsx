@@ -29,7 +29,21 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
   const profile = profileData as { caterer_id: string | null } | null;
   const catererId = profile?.caterer_id;
 
-  // ── Requête Supabase selon le filtre actif ──────────────────
+  // ── Pour sent/accepted/refused : filtre sur le statut du devis
+  let filteredQuoteRequestIds: string[] | null = null;
+  if (activeFilter === "sent" || activeFilter === "accepted" || activeFilter === "refused") {
+    const quoteStatus = activeFilter === "sent" ? "sent" : activeFilter;
+    const { data: quoteData } = await supabase
+      .from("quotes")
+      .select("quote_request_id")
+      .eq("caterer_id", catererId ?? "")
+      .eq("status", quoteStatus);
+    filteredQuoteRequestIds = (quoteData ?? []).map(
+      (q) => (q as { quote_request_id: string }).quote_request_id
+    );
+  }
+
+  // ── Requête principale ───────────────────────────────────────
   let query = supabase
     .from("quote_request_caterers")
     .select(`
@@ -37,25 +51,43 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
       responded_at,
       quote_requests (
         id, title, event_date, event_address,
-        guest_count, budget_global, meal_type,
-        users ( first_name, last_name )
+        guest_count, budget_global, meal_type, description, created_at,
+        users ( first_name, last_name ),
+        companies ( name ),
+        quotes ( status, caterer_id )
       )
     `)
     .eq("caterer_id", catererId ?? "");
 
-  // Filtrage par statut
+  // Filtrage par statut QRC
   switch (activeFilter) {
     case "new":
       query = query.eq("status", "selected");
       break;
-    case "sent":
     case "pending":
-      query = query.in("status", ["responded", "transmitted_to_client"]);
+      query = query.eq("status", "responded");
+      break;
+    case "sent":
+      query = query.eq("status", "transmitted_to_client");
+      if (filteredQuoteRequestIds && filteredQuoteRequestIds.length > 0) {
+        query = query.in("quote_request_id", filteredQuoteRequestIds);
+      } else if (filteredQuoteRequestIds !== null) {
+        query = query.eq("quote_request_id", "00000000-0000-0000-0000-000000000000");
+      }
       break;
     case "archived":
       query = query.eq("status", "rejected");
       break;
-    // "accepted" et "refused" : filtre sur le devis associé (géré côté JS après fetch)
+    case "accepted":
+    case "refused":
+      query = query.eq("status", "transmitted_to_client");
+      if (filteredQuoteRequestIds && filteredQuoteRequestIds.length > 0) {
+        query = query.in("quote_request_id", filteredQuoteRequestIds);
+      } else {
+        // Aucun résultat attendu
+        query = query.eq("quote_request_id", "00000000-0000-0000-0000-000000000000");
+      }
+      break;
   }
 
   // Tri
@@ -67,12 +99,14 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
 
   const { data: rows } = await query;
 
-  // ── Transformation + filtres complémentaires ────────────────
+  // ── Transformation ───────────────────────────────────────────
   type Row = {
     status: string;
     responded_at: string | null;
     quote_requests: (QuoteRequest & {
       users: { first_name: string | null; last_name: string | null } | null;
+      companies: { name: string } | null;
+      quotes: { status: string; caterer_id: string }[] | null;
     }) | null;
   };
 
@@ -83,15 +117,22 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
 
       const qr = r.quote_requests;
       const u = qr.users;
+      const quoteStatus = (qr.quotes ?? []).find(
+        (q) => q.caterer_id === catererId
+      )?.status ?? null;
+
       return {
         ...qr,
         client_name: u
           ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()
           : undefined,
+        company_name: qr.companies?.name ?? undefined,
         is_new: r.status === "selected",
+        qrc_status: r.status,
+        quote_status: quoteStatus,
       };
     })
-    .filter(Boolean) as Array<Parameters<typeof RequestCard>[0]["request"]>;
+    .filter(Boolean) as Array<Parameters<typeof RequestCard>[0]["request"] & { qrc_status: string }>;
 
   // Recherche textuelle (titre ou adresse)
   if (searchQuery) {
@@ -161,7 +202,7 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col divide-y divide-[#F3F4F6]">
                 {requests.map((req) => (
                   <RequestCard key={req.id} request={req} />
                 ))}

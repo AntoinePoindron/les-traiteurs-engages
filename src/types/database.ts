@@ -22,7 +22,6 @@ export type QuoteStatus = "draft" | "sent" | "accepted" | "refused" | "expired";
 
 export type OrderStatus =
   | "confirmed"
-  | "in_progress"
   | "delivered"
   | "invoiced"
   | "paid"
@@ -137,6 +136,15 @@ export type Company = {
 
 export type CompanyInsert = Omit<Company, "id" | "created_at" | "updated_at">;
 
+export type ServiceTypeConfig = {
+  enabled: boolean;
+  capacity_min?: number | null;
+  capacity_max?: number | null;
+  price_per_person_min?: number | null;
+  global_min?: number | null;
+  lead_time_days?: number | null;
+};
+
 export type Caterer = {
   id: string;
   name: string;
@@ -152,6 +160,13 @@ export type Caterer = {
   capacity_max: number | null;
   is_validated: boolean;
   commission_rate: number;
+  logo_url: string | null;
+  delivery_radius_km: number | null;
+  dietary_vegetarian: boolean;
+  dietary_gluten_free: boolean;
+  dietary_halal: boolean;
+  dietary_bio: boolean;
+  service_config: Record<string, ServiceTypeConfig>;
   created_at: string;
   updated_at: string;
 };
@@ -189,22 +204,45 @@ export type QuoteRequest = {
   budget_global: number | null;
   budget_per_person: number | null;
   budget_flexibility: "none" | "5" | "10" | null;
-  meal_type: MealType;
+  meal_type: MealType | null;
   is_full_day: boolean;
   meal_type_secondary: MealType | null;
+  // Wizard fields
+  service_type: string | null;
+  service_type_secondary: string | null;
   dietary_vegetarian: boolean;
   dietary_vegan: boolean;
   dietary_halal: boolean;
   dietary_kosher: boolean;
   dietary_gluten_free: boolean;
+  dietary_bio: boolean;
   dietary_other: string | null;
+  dietary_vegetarian_count: number | null;
+  dietary_halal_count: number | null;
+  dietary_gluten_free_count: number | null;
   drinks_included: boolean;
   drinks_details: string | null;
+  drinks_water_still: boolean;
+  drinks_water_sparkling: boolean;
+  drinks_soft: boolean;
+  drinks_soft_details: string | null;
+  drinks_alcohol: boolean;
+  drinks_alcohol_details: string | null;
+  drinks_hot: boolean;
   service_waitstaff: boolean;
   service_equipment: boolean;
   service_decoration: boolean;
   service_other: string | null;
+  service_equipment_verres: boolean;
+  service_equipment_nappes: boolean;
+  service_equipment_tables: boolean;
+  service_equipment_other: string | null;
+  service_setup: boolean;
+  service_setup_time: string | null;
+  service_setup_other: string | null;
   description: string | null;
+  message_to_caterer: string | null;
+  is_compare_mode: boolean;
   status: QuoteRequestStatus;
   super_admin_notes: string | null;
   created_at: string;
@@ -243,10 +281,12 @@ export type Quote = {
   id: string;
   quote_request_id: string;
   caterer_id: string;
+  reference: string | null;
   total_amount_ht: number;
   amount_per_person: number | null;
   valorisable_agefiph: number | null;
   details: QuoteDetail[];
+  notes: string | null;
   valid_until: string | null;
   status: QuoteStatus;
   created_at: string;
@@ -335,3 +375,27 @@ export type Message = {
 };
 
 export type MessageInsert = Omit<Message, "id" | "created_at">;
+
+export type CompanyService = {
+  id: string;
+  company_id: string;
+  name: string;
+  description: string | null;
+  annual_budget: number;
+  created_at: string;
+};
+
+export type CompanyServiceInsert = Omit<CompanyService, "id" | "created_at">;
+
+export type CompanyEmployee = {
+  id: string;
+  company_id: string;
+  service_id: string | null;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  position: string | null;
+  created_at: string;
+};
+
+export type CompanyEmployeeInsert = Omit<CompanyEmployee, "id" | "created_at">;

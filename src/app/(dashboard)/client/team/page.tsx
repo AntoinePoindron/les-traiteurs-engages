@@ -1,0 +1,659 @@
+import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import {
+  Building2, Users, Euro, Plus, Pencil, Trash2,
+  BarChart3, UserPlus,
+} from "lucide-react";
+import type { CompanyService, CompanyEmployee } from "@/types/database";
+import {
+  createServiceAction,
+  deleteServiceAction,
+  createEmployeeAction,
+  updateEmployeeServiceAction,
+  deleteEmployeeAction,
+} from "./actions";
+
+// ── Constants ──────────────────────────────────────────────────
+
+const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
+
+type Tab = "services" | "effectifs" | "depenses";
+
+interface PageProps {
+  searchParams: Promise<{
+    tab?: string;
+    action?: string;
+    service?: string;
+  }>;
+}
+
+// ── Page ───────────────────────────────────────────────────────
+
+export default async function ClientTeamPage({ searchParams }: PageProps) {
+  const { tab, action } = await searchParams;
+  const activeTab: Tab = (tab as Tab) || "services";
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: profile } = await supabase
+    .from("users").select("company_id, role").eq("id", user!.id).single();
+  const companyId = (profile as { company_id: string | null; role: string } | null)?.company_id ?? null;
+
+  // ── Fetch services ───────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: servicesRaw } = await (supabase as any)
+    .from("company_services")
+    .select("id, name, description, annual_budget, created_at")
+    .eq("company_id", companyId ?? "")
+    .order("name");
+
+  const services: CompanyService[] = servicesRaw ?? [];
+
+  // ── Fetch employees ──────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: employeesRaw } = await (supabase as any)
+    .from("company_employees")
+    .select("id, first_name, last_name, email, position, service_id, created_at")
+    .eq("company_id", companyId ?? "")
+    .order("last_name");
+
+  const employees: CompanyEmployee[] = employeesRaw ?? [];
+
+  // ── Fetch dépenses par service ───────────────────────────────
+  // orders → quotes → quote_requests.company_service_id → company_services
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: ordersForExpenses } = await (supabase as any)
+    .from("orders")
+    .select(`
+      quotes!inner (
+        total_amount_ht,
+        quote_requests!inner (
+          company_service_id
+        )
+      )
+    `)
+    .eq("client_admin_id", user!.id)
+    .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
+
+  // Agrégation des dépenses par service
+  const spendByService: Record<string, number> = {};
+  for (const order of ordersForExpenses ?? []) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sid = (order as any).quotes?.quote_requests?.company_service_id;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const amount = Number((order as any).quotes?.total_amount_ht ?? 0);
+    if (sid) {
+      spendByService[sid] = (spendByService[sid] ?? 0) + amount;
+    }
+  }
+
+  const totalSpent = Object.values(spendByService).reduce((s, v) => s + v, 0);
+  const totalBudget = services.reduce((s, sv) => s + (sv.annual_budget ?? 0), 0);
+
+  // Comptage effectifs par service
+  const countByService: Record<string, number> = {};
+  for (const emp of employees) {
+    if (emp.service_id) {
+      countByService[emp.service_id] = (countByService[emp.service_id] ?? 0) + 1;
+    }
+  }
+
+  // Service map pour les selects
+  const serviceMap = Object.fromEntries(services.map((s) => [s.id, s.name]));
+
+  return (
+    <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
+      <div className="pt-[54px] px-6 pb-12">
+        <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
+
+          {/* Titre */}
+          <h1
+            className="font-display font-bold text-4xl text-black"
+            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+          >
+            Équipe & services
+          </h1>
+
+          {/* KPIs rapides */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <MiniKpi icon={Building2} label="Services" value={String(services.length)} />
+            <MiniKpi icon={Users}     label="Effectifs" value={String(employees.length)} />
+            <MiniKpi icon={Euro}      label="Budget annuel" value={totalBudget > 0 ? totalBudget.toLocaleString("fr-FR") + " €" : "—"} />
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 flex-wrap">
+            {([
+              { key: "services",  label: "Services",         icon: Building2 },
+              { key: "effectifs", label: "Effectifs",        icon: Users },
+              { key: "depenses",  label: "Dépenses",         icon: BarChart3 },
+            ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => {
+              const isActive = activeTab === key;
+              return (
+                <Link
+                  key={key}
+                  href={`/client/team?tab=${key}`}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all"
+                  style={{
+                    backgroundColor: isActive ? "#1A3A52" : "#FFFFFF",
+                    color: isActive ? "#FFFFFF" : "#6B7280",
+                    ...mFont,
+                  }}
+                >
+                  <Icon size={14} />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* ── TAB : SERVICES ── */}
+          {activeTab === "services" && (
+            <div className="flex flex-col gap-4">
+
+              {/* Formulaire d'ajout */}
+              {action === "add-service" ? (
+                <div className="bg-white rounded-lg p-6">
+                  <p className="font-display font-bold text-xl text-black mb-4" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Ajouter un service
+                  </p>
+                  <form action={createServiceAction} className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Nom du service *</label>
+                      <input
+                        name="name" required
+                        placeholder="Ex. : Direction, RH, DSI…"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Description</label>
+                      <input
+                        name="description"
+                        placeholder="Courte description (optionnel)"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Budget annuel traiteur (€ HT)</label>
+                      <input
+                        name="annual_budget" type="number" min="0" step="100"
+                        placeholder="Ex. : 5000"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <Link
+                        href="/client/team?tab=services"
+                        className="flex-1 flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                        style={mFont}
+                      >
+                        Annuler
+                      </Link>
+                      <button
+                        type="submit"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                        style={{ backgroundColor: "#1A3A52", ...mFont }}
+                      >
+                        <Plus size={13} />
+                        Créer le service
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div className="flex justify-end">
+                  <Link
+                    href="/client/team?tab=services&action=add-service"
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: "#1A3A52", ...mFont }}
+                  >
+                    <Plus size={14} />
+                    Nouveau service
+                  </Link>
+                </div>
+              )}
+
+              {/* Liste des services */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-0">
+                {services.length === 0 ? (
+                  <div className="py-10 text-center flex flex-col items-center gap-2">
+                    <Building2 size={32} className="text-[#D1D5DB]" />
+                    <p className="text-sm text-[#6B7280]" style={mFont}>Aucun service créé.</p>
+                    <Link
+                      href="/client/team?tab=services&action=add-service"
+                      className="text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70"
+                      style={mFont}
+                    >
+                      Créer le premier service
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-[#F3F4F6]">
+                    {services.map((service) => {
+                      const spent = spendByService[service.id] ?? 0;
+                      const budget = service.annual_budget ?? 0;
+                      const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
+                      const headcount = countByService[service.id] ?? 0;
+
+                      return (
+                        <div key={service.id} className="py-4 flex flex-col gap-2">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-black" style={mFont}>{service.name}</p>
+                              {service.description && (
+                                <p className="text-xs text-[#9CA3AF] mt-0.5" style={mFont}>{service.description}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <form action={deleteServiceAction}>
+                                <input type="hidden" name="service_id" value={service.id} />
+                                <button
+                                  type="submit"
+                                  className="w-7 h-7 flex items-center justify-center rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                                  title="Supprimer ce service"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+
+                          {/* Méta */}
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <span className="flex items-center gap-1 text-xs text-[#6B7280]" style={mFont}>
+                              <Users size={11} />
+                              {headcount} effectif{headcount !== 1 ? "s" : ""}
+                            </span>
+                            {budget > 0 && (
+                              <span className="flex items-center gap-1 text-xs text-[#6B7280]" style={mFont}>
+                                <Euro size={11} />
+                                Budget : {budget.toLocaleString("fr-FR")} €
+                              </span>
+                            )}
+                            {spent > 0 && (
+                              <span className="flex items-center gap-1 text-xs text-[#6B7280]" style={mFont}>
+                                Dépensé : {spent.toLocaleString("fr-FR")} €
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Barre de progression budget */}
+                          {budget > 0 && (
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 h-1.5 bg-[#F3F4F6] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all"
+                                  style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: pct > 90 ? "#DC2626" : pct > 70 ? "#F59E0B" : "#1A3A52",
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>{Math.round(pct)} %</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB : EFFECTIFS ── */}
+          {activeTab === "effectifs" && (
+            <div className="flex flex-col gap-4">
+
+              {/* Formulaire d'ajout */}
+              {action === "add-employee" ? (
+                <div className="bg-white rounded-lg p-6">
+                  <p className="font-display font-bold text-xl text-black mb-4" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Ajouter un collaborateur
+                  </p>
+                  <form action={createEmployeeAction} className="flex flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-black" style={mFont}>Prénom *</label>
+                        <input
+                          name="first_name" required
+                          placeholder="Prénom"
+                          className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                          style={mFont}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-bold text-black" style={mFont}>Nom *</label>
+                        <input
+                          name="last_name" required
+                          placeholder="Nom de famille"
+                          className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                          style={mFont}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Email</label>
+                      <input
+                        name="email" type="email"
+                        placeholder="email@entreprise.fr"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Poste</label>
+                      <input
+                        name="position"
+                        placeholder="Ex. : Responsable, Chargé de mission…"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-bold text-black" style={mFont}>Service</label>
+                      <select
+                        name="service_id"
+                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black bg-white focus:outline-none focus:border-[#1A3A52] transition-colors"
+                        style={mFont}
+                      >
+                        <option value="">— Aucun service —</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <Link
+                        href="/client/team?tab=effectifs"
+                        className="flex-1 flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                        style={mFont}
+                      >
+                        Annuler
+                      </Link>
+                      <button
+                        type="submit"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                        style={{ backgroundColor: "#1A3A52", ...mFont }}
+                      >
+                        <UserPlus size={13} />
+                        Ajouter
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div className="flex justify-end">
+                  <Link
+                    href="/client/team?tab=effectifs&action=add-employee"
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
+                    style={{ backgroundColor: "#1A3A52", ...mFont }}
+                  >
+                    <UserPlus size={14} />
+                    Ajouter un collaborateur
+                  </Link>
+                </div>
+              )}
+
+              {/* Liste des effectifs groupés par service */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                {employees.length === 0 ? (
+                  <div className="py-10 text-center flex flex-col items-center gap-2">
+                    <Users size={32} className="text-[#D1D5DB]" />
+                    <p className="text-sm text-[#6B7280]" style={mFont}>Aucun collaborateur renseigné.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-[#F3F4F6]">
+                    {employees.map((emp) => (
+                      <div key={emp.id} className="py-4 flex items-center gap-4">
+                        {/* Avatar */}
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                          style={{ backgroundColor: "#1A3A52", ...mFont }}
+                        >
+                          {emp.first_name[0]}{emp.last_name[0]}
+                        </div>
+
+                        {/* Infos */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-black" style={mFont}>
+                            {emp.first_name} {emp.last_name}
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {emp.position && (
+                              <span className="text-xs text-[#6B7280]" style={mFont}>{emp.position}</span>
+                            )}
+                            {emp.email && (
+                              <span className="text-xs text-[#9CA3AF]" style={mFont}>{emp.email}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Service (select inline) */}
+                        <form action={updateEmployeeServiceAction} className="flex items-center gap-2 shrink-0">
+                          <input type="hidden" name="employee_id" value={emp.id} />
+                          <select
+                            name="service_id"
+                            defaultValue={emp.service_id ?? ""}
+                            onChange={undefined}
+                            className="text-xs rounded-lg border border-[#E5E7EB] px-2 py-1.5 bg-white text-black focus:outline-none focus:border-[#1A3A52] transition-colors max-w-[140px]"
+                            style={mFont}
+                          >
+                            <option value="">Non assigné</option>
+                            {services.map((s) => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#1A3A52] hover:bg-[#F0F4F7] transition-colors"
+                            title="Enregistrer"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        </form>
+
+                        {/* Supprimer */}
+                        <form action={deleteEmployeeAction}>
+                          <input type="hidden" name="employee_id" value={emp.id} />
+                          <button
+                            type="submit"
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors shrink-0"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </form>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB : DÉPENSES ── */}
+          {activeTab === "depenses" && (
+            <div className="flex flex-col gap-4">
+
+              {/* Résumé global */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg p-5 flex flex-col gap-2">
+                  <p className="text-xs text-[#6B7280]" style={mFont}>Budget annuel total</p>
+                  <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    {totalBudget > 0 ? totalBudget.toLocaleString("fr-FR") + " €" : "—"}
+                  </p>
+                </div>
+                <div className="bg-white rounded-lg p-5 flex flex-col gap-2">
+                  <p className="text-xs text-[#6B7280]" style={mFont}>Total dépensé (commandes)</p>
+                  <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    {totalSpent > 0 ? totalSpent.toLocaleString("fr-FR") + " €" : "—"}
+                  </p>
+                  {totalBudget > 0 && totalSpent > 0 && (
+                    <p className="text-xs text-[#9CA3AF]" style={mFont}>
+                      {Math.round((totalSpent / totalBudget) * 100)} % du budget consommé
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Détail par service */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Dépenses par service
+                </p>
+
+                {services.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-[#6B7280]" style={mFont}>
+                      Créez des services pour suivre les dépenses par département.
+                    </p>
+                    <Link
+                      href="/client/team?tab=services&action=add-service"
+                      className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70"
+                      style={mFont}
+                    >
+                      <Plus size={13} />
+                      Créer un service
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {/* Sans service */}
+                    {(() => {
+                      const unassigned = (ordersForExpenses ?? []).filter(
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        (o: any) => !o.quotes?.quote_requests?.company_service_id
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      ).reduce((sum: number, o: any) => sum + Number(o.quotes?.total_amount_ht ?? 0), 0);
+                      if (unassigned === 0) return null;
+                      return (
+                        <ExpenseRow
+                          name="Sans service"
+                          spent={unassigned}
+                          budget={null}
+                          headcount={null}
+                          mFont={mFont}
+                        />
+                      );
+                    })()}
+
+                    {/* Par service */}
+                    {services
+                      .sort((a, b) => (spendByService[b.id] ?? 0) - (spendByService[a.id] ?? 0))
+                      .map((service) => (
+                        <ExpenseRow
+                          key={service.id}
+                          name={service.name}
+                          spent={spendByService[service.id] ?? 0}
+                          budget={service.annual_budget ?? null}
+                          headcount={countByService[service.id] ?? 0}
+                          mFont={mFont}
+                        />
+                      ))}
+                  </div>
+                )}
+
+                {services.length > 0 && Object.keys(spendByService).length === 0 && (
+                  <p className="text-xs text-[#9CA3AF] text-center py-4" style={mFont}>
+                    Associez des demandes de devis à vos services pour voir les dépenses apparaître ici.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────
+
+function MiniKpi({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F0F4F7" }}>
+        <Icon size={17} style={{ color: "#1A3A52" }} />
+      </div>
+      <div>
+        <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+          {value}
+        </p>
+        <p className="text-[11px] text-[#6B7280]" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function ExpenseRow({
+  name, spent, budget, headcount, mFont,
+}: {
+  name: string;
+  spent: number;
+  budget: number | null;
+  headcount: number | null;
+  mFont: React.CSSProperties;
+}) {
+  const pct = budget && budget > 0 ? Math.min(100, (spent / budget) * 100) : null;
+  const barColor = pct == null ? "#1A3A52" : pct > 90 ? "#DC2626" : pct > 70 ? "#F59E0B" : "#1A3A52";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-black" style={mFont}>{name}</p>
+          {headcount != null && headcount > 0 && (
+            <p className="text-[11px] text-[#9CA3AF]" style={mFont}>{headcount} collaborateur{headcount !== 1 ? "s" : ""}</p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-bold text-black" style={mFont}>
+            {spent.toLocaleString("fr-FR")} €
+          </p>
+          {budget != null && budget > 0 && (
+            <p className="text-[11px] text-[#9CA3AF]" style={mFont}>
+              / {budget.toLocaleString("fr-FR")} €
+            </p>
+          )}
+        </div>
+      </div>
+      {/* Barre */}
+      <div className="h-1.5 bg-[#F3F4F6] rounded-full overflow-hidden">
+        {spent > 0 && (
+          <div
+            className="h-full rounded-full"
+            style={{ width: pct != null ? `${pct}%` : "4px", backgroundColor: barColor }}
+          />
+        )}
+      </div>
+      {pct != null && (
+        <div className="flex justify-between">
+          <span className="text-[10px] text-[#9CA3AF]" style={mFont}>{Math.round(pct)} % consommé</span>
+          {budget != null && spent <= budget && (
+            <span className="text-[10px] text-[#9CA3AF]" style={mFont}>
+              {(budget - spent).toLocaleString("fr-FR")} € restants
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

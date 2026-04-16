@@ -1,8 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
-import RequestCard from "@/components/caterer/RequestCard";
 import UpcomingOrdersPanel from "@/components/caterer/UpcomingOrdersPanel";
+import StatusBadge from "@/components/ui/StatusBadge";
 import Link from "next/link";
-import type { QuoteRequest } from "@/types/database";
+import { Inbox, Clock, ShoppingBag, TrendingUp, ChevronRight, Euro, Users, MapPin, Building2 } from "lucide-react";
+
+// ── Constants ──────────────────────────────────────────────────
+
+const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
+
+const MEAL_TYPE_LABELS: Record<string, string> = {
+  dejeuner:          "Déjeuner",
+  diner:             "Dîner",
+  cocktail:          "Cocktail dinatoire",
+  cocktail_aperitif: "Cocktail apéritif",
+  petit_dejeuner:    "Petit-déjeuner",
+  pause_gourmande:   "Pause gourmande",
+  plateaux_repas:    "Plateaux repas",
+  autre:             "Autre",
+};
+
+// ── Page ───────────────────────────────────────────────────────
 
 export default async function CatererDashboardPage() {
   const supabase = await createClient();
@@ -18,28 +35,25 @@ export default async function CatererDashboardPage() {
   const catererId = profile?.caterer_id;
 
   // ── KPIs ────────────────────────────────────────────────────
-  // Nouvelles demandes (statut sent_to_caterers, assignées à ce traiteur)
+
   const { count: newRequestsCount } = await supabase
     .from("quote_request_caterers")
     .select("*", { count: "exact", head: true })
     .eq("caterer_id", catererId ?? "")
     .eq("status", "selected");
 
-  // Devis en attente (envoyés, pas encore acceptés)
   const { count: pendingQuotesCount } = await supabase
     .from("quotes")
     .select("*", { count: "exact", head: true })
     .eq("caterer_id", catererId ?? "")
     .eq("status", "sent");
 
-  // Commandes en cours
   const { count: activeOrdersCount } = await supabase
     .from("orders")
     .select("*, quotes!inner(caterer_id)", { count: "exact", head: true })
     .eq("quotes.caterer_id", catererId ?? "")
-    .in("status", ["confirmed", "in_progress"]);
+    .eq("status", "confirmed");
 
-  // CA prévisionnel du mois (commandes confirmées ce mois-ci)
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
@@ -49,7 +63,7 @@ export default async function CatererDashboardPage() {
     .select("quotes!inner(total_amount_ht, caterer_id)")
     .eq("quotes.caterer_id", catererId ?? "")
     .gte("created_at", startOfMonth.toISOString())
-    .in("status", ["confirmed", "in_progress", "delivered", "invoiced", "paid"]);
+    .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
 
   const caMonthly = (monthOrders ?? []).reduce((sum, o) => {
     const q = (o as { quotes: { total_amount_ht: number } | null }).quotes;
@@ -57,18 +71,20 @@ export default async function CatererDashboardPage() {
   }, 0);
 
   // ── Demandes à traiter ──────────────────────────────────────
+
   const { data: assignedRequests } = await supabase
     .from("quote_request_caterers")
     .select(`
       status,
       quote_requests (
         id, title, event_date, event_address, guest_count,
-        budget_global, meal_type,
-        users ( first_name, last_name )
+        budget_global, meal_type, created_at,
+        users ( first_name, last_name ),
+        companies ( name )
       )
     `)
     .eq("caterer_id", catererId ?? "")
-    .in("status", ["selected", "responded"])
+    .eq("status", "selected")
     .order("created_at", { ascending: false })
     .limit(5);
 
@@ -76,26 +92,49 @@ export default async function CatererDashboardPage() {
     .map((row) => {
       const r = row as {
         status: string;
-        quote_requests: (QuoteRequest & { users: { first_name: string | null; last_name: string | null } | null }) | null;
+        quote_requests: {
+          id: string;
+          title: string;
+          event_date: string;
+          event_address: string;
+          guest_count: number;
+          budget_global: number | null;
+          meal_type: string;
+          created_at: string;
+          users: { first_name: string | null; last_name: string | null } | null;
+          companies: { name: string } | null;
+        } | null;
       };
       if (!r.quote_requests) return null;
       const u = r.quote_requests.users;
       return {
         ...r.quote_requests,
         client_name: u ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() : undefined,
-        is_new: r.status === "selected",
+        company_name: r.quote_requests.companies?.name ?? undefined,
       };
     })
-    .filter(Boolean) as Array<Parameters<typeof RequestCard>[0]["request"]>;
+    .filter(Boolean) as Array<{
+      id: string;
+      title: string;
+      event_date: string;
+      event_address: string;
+      guest_count: number;
+      budget_global: number | null;
+      meal_type: string;
+      created_at: string;
+      client_name?: string;
+      company_name?: string;
+    }>;
 
   // ── Commandes à venir ───────────────────────────────────────
+
   const { data: upcomingOrdersData } = await supabase
     .from("orders")
     .select(`
       id, delivery_date, delivery_address,
       quotes!inner (
         caterer_id,
-        quote_requests ( company_id, companies ( name ) )
+        quote_requests ( company_id, meal_type, companies ( name ) )
       )
     `)
     .eq("quotes.caterer_id", catererId ?? "")
@@ -111,6 +150,7 @@ export default async function CatererDashboardPage() {
       delivery_address: string;
       quotes: {
         quote_requests: {
+          meal_type: string | null;
           companies: { name: string } | null;
         } | null;
       } | null;
@@ -119,6 +159,7 @@ export default async function CatererDashboardPage() {
       id: order.id,
       delivery_date: order.delivery_date,
       delivery_address: order.delivery_address,
+      meal_type: order.quotes?.quote_requests?.meal_type ?? null,
       company_name: order.quotes?.quote_requests?.companies?.name ?? "—",
     };
   });
@@ -129,75 +170,124 @@ export default async function CatererDashboardPage() {
       style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}
     >
       <div className="pt-[54px] px-6 pb-12">
-        <div className="mx-auto" style={{ maxWidth: "1020px" }}>
+        <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
           {/* Titre */}
-          <h1
-            className="font-display font-bold text-4xl mb-6"
-            style={{ color: "#1A3A52", fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-          >
-            Tableau de bord
-          </h1>
-
-          {/* ── Chiffres clés ── */}
-          <div className="bg-white rounded-lg p-6 mb-6 relative overflow-hidden">
-            <h2
-              className="font-display font-bold text-2xl text-black mb-6"
+          <div>
+            <h1
+              className="font-display font-bold text-4xl text-black"
               style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
             >
-              Chiffres clés
-            </h2>
+              Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
+            </h1>
+          </div>
 
-            <div className="flex gap-12 flex-wrap pr-36">
-              <KpiStat value={String(newRequestsCount ?? 0)} label="Nouvelles demandes" />
-              <KpiStat value={String(pendingQuotesCount ?? 0)} label="Devis en attente" />
-              <KpiStat value={String(activeOrdersCount ?? 0)} label="Commandes en cours" />
-              <KpiStat
-                value={caMonthly > 0 ? `${caMonthly.toLocaleString("fr-FR")} €` : "—"}
-                label="CA prévisionnel du mois"
-              />
-            </div>
-
-            {/* Image décorative (bas droite) */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/decoration-chiffres-cles.png"
-              alt=""
-              aria-hidden
-              className="absolute bottom-0 right-0 h-36 w-auto pointer-events-none select-none"
+          {/* KPI cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard icon={Inbox}       label="Nouvelles demandes"      value={String(newRequestsCount  ?? 0)} />
+            <KpiCard icon={Clock}       label="Devis en attente"        value={String(pendingQuotesCount ?? 0)} />
+            <KpiCard icon={ShoppingBag} label="Commandes en cours"      value={String(activeOrdersCount  ?? 0)} />
+            <KpiCard
+              icon={TrendingUp}
+              label="CA prévisionnel"
+              value={caMonthly > 0 ? `${caMonthly.toLocaleString("fr-FR")} €` : "—"}
             />
           </div>
 
-          {/* ── Contenu principal : demandes + panneau droit ── */}
+          {/* Contenu principal : demandes + panneau droit */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
 
             {/* Colonne gauche : demandes à traiter */}
-            <div className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6">
+            <div className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2
-                  className="font-display font-bold text-2xl text-black"
+                <p
+                  className="font-display font-bold text-xl text-black"
                   style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                 >
                   Demandes à traiter
-                </h2>
+                </p>
                 <Link
                   href="/caterer/requests"
-                  className="text-xs font-bold text-navy underline"
-                  style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                  className="text-xs font-bold text-[#1A3A52] hover:opacity-70 transition-opacity"
+                  style={mFont}
                 >
-                  Voir toute la liste
+                  Voir tout
                 </Link>
               </div>
 
               {requests.length === 0 ? (
-                <p className="text-sm text-gray-medium py-4" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                <p className="text-sm text-[#6B7280] py-4" style={mFont}>
                   Aucune demande en attente.
                 </p>
               ) : (
-                <div className="flex flex-col gap-4">
-                  {requests.map((req) => (
-                    <RequestCard key={req.id} request={req} />
-                  ))}
+                <div className="flex flex-col">
+                  {requests.map((req, i) => {
+                    const eventDate = new Date(req.event_date).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    });
+                    const mealLabel = MEAL_TYPE_LABELS[req.meal_type] ?? req.meal_type;
+                    const shortAddr = req.event_address.length > 35
+                      ? req.event_address.slice(0, 35) + "…"
+                      : req.event_address;
+
+                    return (
+                      <Link
+                        key={req.id}
+                        href={`/caterer/requests/${req.id}`}
+                        className="flex items-center gap-3 py-3.5 hover:bg-[#F5F1E8] -mx-2 px-2 rounded-lg transition-colors group"
+                        style={{ borderTop: i > 0 ? "1px solid #F3F4F6" : "none" }}
+                      >
+                        {/* Carré décoratif */}
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#F5F1E8" }}>
+                          <Building2 size={15} style={{ color: "#1A3A52" }} />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
+                        <div className="flex flex-col gap-1 min-w-0">
+                          {/* Titre + entité */}
+                          <div className="flex items-baseline gap-1.5 min-w-0">
+                            <p className="text-sm font-bold text-black truncate" style={mFont}>
+                              {mealLabel}
+                            </p>
+                            {req.company_name && (
+                              <p className="text-xs text-[#9CA3AF] truncate shrink-0" style={mFont}>
+                                {req.company_name}
+                              </p>
+                            )}
+                          </div>
+                          {/* Infos compactes */}
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                            <span className="text-xs text-[#6B7280]" style={mFont}>{mealLabel} · {eventDate}</span>
+                            {req.guest_count && (
+                              <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                                <Users size={10} />
+                                {req.guest_count}
+                              </span>
+                            )}
+                            {req.budget_global && (
+                              <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                                <Euro size={10} />
+                                {req.budget_global.toLocaleString("fr-FR")}
+                              </span>
+                            )}
+                            {shortAddr && (
+                              <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                                <MapPin size={10} />
+                                {shortAddr}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <StatusBadge variant="new" />
+                          <ChevronRight size={14} className="text-[#D1D5DB] group-hover:text-[#9CA3AF] transition-colors" />
+                        </div>
+                        </div>{/* fin flex-1 */}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -214,21 +304,34 @@ export default async function CatererDashboardPage() {
   );
 }
 
-function KpiStat({ value, label }: { value: string; label: string }) {
+// ── KpiCard ────────────────────────────────────────────────────
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="flex flex-col gap-2 shrink-0">
-      <p
-        className="font-display font-bold text-2xl"
-        style={{ color: "#1A3A52", fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+    <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+      <div
+        className="w-9 h-9 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: "#F0F4F7" }}
       >
-        {value}
-      </p>
-      <p
-        className="text-base text-black"
-        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-      >
-        {label}
-      </p>
+        <Icon size={18} style={{ color: "#1A3A52" }} />
+      </div>
+      <div>
+        <p
+          className="font-display font-bold text-3xl text-black"
+          style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+        >
+          {value}
+        </p>
+        <p className="text-xs text-[#6B7280] mt-0.5" style={mFont}>{label}</p>
+      </div>
     </div>
   );
 }

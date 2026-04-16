@@ -47,21 +47,32 @@ export default function FilterTabs({ activeFilter, searchQuery }: FilterTabsProp
   );
 
   return (
-    <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-      {/* Onglets filtres — scroll horizontal sur mobile, wrap sur desktop */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
+    <div className="bg-white rounded-lg p-6 flex items-center gap-4">
+      {/* Onglets filtres */}
+      <div className="flex items-center gap-2 flex-1 overflow-x-auto">
         {TABS.map((tab) => {
           const isActive = activeFilter === tab.value;
           return (
             <button
               key={tab.value}
               onClick={() => updateParams("filter", tab.value === "all" ? "" : tab.value)}
-              className="px-3 py-2 rounded-full text-xs font-bold transition-colors whitespace-nowrap shrink-0"
+              className="px-3 py-2 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-all cursor-pointer"
               style={{
                 fontFamily: "Marianne, system-ui, sans-serif",
                 backgroundColor: isActive ? "#1A3A52" : "#F5F1E8",
                 color: isActive ? "#FFFFFF" : "#1A3A52",
-                border: isActive ? "1px solid #1A3A52" : "none",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = "#E8E3D8";
+                  e.currentTarget.style.color = "#1A3A52";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = "#F5F1E8";
+                  e.currentTarget.style.color = "#1A3A52";
+                }
               }}
             >
               {tab.label}
@@ -70,10 +81,8 @@ export default function FilterTabs({ activeFilter, searchQuery }: FilterTabsProp
         })}
       </div>
 
-      {/* Recherche — pleine largeur sur mobile, fixe sur desktop */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-black w-full md:w-[261px] md:self-end"
-      >
+      {/* Recherche */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-[#E5E7EB] shrink-0 w-[220px] focus-within:border-[#1A3A52] transition-colors">
         <input
           type="text"
           placeholder="Rechercher..."

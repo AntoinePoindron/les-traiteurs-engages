@@ -2,7 +2,9 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Calendar, Euro, Building2, ChevronLeft } from "lucide-react";
+import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
 import type {
   QuoteRequest,
   QuoteRequestCatererStatus,
@@ -135,19 +137,50 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
   const request = assignment.quote_requests;
   if (!request) notFound();
 
-  // Fetch existing quote
+  // Fetch existing sent/accepted quote (full details for preview)
   const { data: quoteData } = await supabase
     .from("quotes")
     .select(
-      "id, total_amount_ht, amount_per_person, valorisable_agefiph, valid_until, status, created_at"
+      "id, reference, total_amount_ht, amount_per_person, valorisable_agefiph, valid_until, notes, details, status, created_at"
     )
     .eq("quote_request_id", id)
     .eq("caterer_id", catererId)
+    .neq("status", "draft")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   const quote = quoteData as Quote | null;
+
+  // Fetch draft quote if any
+  const { data: draftQuoteData } = await supabase
+    .from("quotes")
+    .select("id")
+    .eq("quote_request_id", id)
+    .eq("caterer_id", catererId)
+    .eq("status", "draft")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const draftQuote = draftQuoteData as { id: string } | null;
+
+  // Fetch caterer info for quote preview
+  const { data: catererData } = await supabase
+    .from("caterers")
+    .select("name, address, city, zip_code, siret, logo_url")
+    .eq("id", catererId)
+    .single();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = catererData as any;
+  const catererInfo = {
+    name: c?.name ?? "",
+    address: c?.address ?? null,
+    city: c?.city ?? null,
+    zip_code: c?.zip_code ?? null,
+    siret: c?.siret ?? null,
+    logo_url: c?.logo_url ?? null,
+  };
 
   // Fetch order history for this caterer + company
   const companyId = (request as { company_id?: string }).company_id;
@@ -225,22 +258,18 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           style={{ maxWidth: "1020px" }}
         >
           {/* Back */}
-          <Link
-            href="/caterer/requests"
-            className="inline-flex items-center gap-1 text-xs font-bold text-navy w-fit"
-            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-          >
-            <ChevronLeft size={16} />
-            Retour à la liste
-          </Link>
+          <BackButton label="Retour" />
 
           {/* Page title */}
-          <h1
-            className="font-display font-bold text-4xl text-black"
-            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-          >
-            {request.title}
-          </h1>
+          <div className="flex items-start justify-between gap-4">
+            <h1
+              className="font-display font-bold text-4xl text-black"
+              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+            >
+              {request.title}
+            </h1>
+            <StatusBadge variant={statusVariant} />
+          </div>
 
           {/* Main grid */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -249,10 +278,6 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
             <div
               className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6"
             >
-              {/* Status badge */}
-              <div>
-                <StatusBadge variant={statusVariant} />
-              </div>
 
               {/* Détails de l'événement */}
               <Section title="Détails de l'événement">
@@ -398,16 +423,38 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
               {/* CTAs */}
               {isNew && (
                 <div className="flex flex-col gap-2">
-                  <Link
-                    href={`/caterer/requests/${id}/quote/new`}
-                    className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
-                    style={{
-                      backgroundColor: "#1A3A52",
-                      fontFamily: "Marianne, system-ui, sans-serif",
-                    }}
-                  >
-                    Accepter et envoyer un devis
-                  </Link>
+                  {draftQuote ? (
+                    <>
+                      <Link
+                        href={`/caterer/requests/${id}/quote/${draftQuote.id}/edit`}
+                        className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+                        style={{
+                          backgroundColor: "#1A3A52",
+                          fontFamily: "Marianne, system-ui, sans-serif",
+                        }}
+                      >
+                        Reprendre le brouillon
+                      </Link>
+                      <Link
+                        href={`/caterer/requests/${id}/quote/new`}
+                        className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-navy border border-[#1A3A52] hover:bg-gray-50 transition-colors"
+                        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                      >
+                        Créer un nouveau devis
+                      </Link>
+                    </>
+                  ) : (
+                    <Link
+                      href={`/caterer/requests/${id}/quote/new`}
+                      className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+                      style={{
+                        backgroundColor: "#1A3A52",
+                        fontFamily: "Marianne, system-ui, sans-serif",
+                      }}
+                    >
+                      Accepter et envoyer un devis
+                    </Link>
+                  )}
                   <form action={refuseRequest}>
                     <input type="hidden" name="requestId" value={id} />
                     <button
@@ -422,11 +469,56 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
               )}
 
               {/* Devis existant (si non nouvelle) */}
-              {!isNew && quote && (
-                <div className="flex flex-col gap-2">
-                  <QuoteSummary quote={quote} />
-                </div>
-              )}
+              {!isNew && quote && (() => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const q = quote as any;
+                const items: {
+                  id: string;
+                  label: string;
+                  description: string;
+                  quantity: number;
+                  unit_price_ht: number;
+                  tva_rate: number;
+                  section: "main" | "drinks" | "extra";
+                }[] = (q.details ?? []).map(
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (d: any, i: number) => ({
+                    id: String(i),
+                    label: d.label ?? "",
+                    description: d.description ?? "",
+                    quantity: d.quantity ?? 1,
+                    unit_price_ht: d.unit_price_ht ?? 0,
+                    tva_rate: d.tva_rate ?? 10,
+                    section: d.section ?? "main",
+                  })
+                );
+                const tvaMap: Record<number, number> = {};
+                for (const item of items) {
+                  const ht = item.quantity * item.unit_price_ht;
+                  tvaMap[item.tva_rate] = (tvaMap[item.tva_rate] ?? 0) + (ht * item.tva_rate) / 100;
+                }
+                const totalTVA = Object.values(tvaMap).reduce((s, v) => s + v, 0);
+                const previewData = {
+                  reference: q.reference ?? "",
+                  validUntil: q.valid_until ?? "",
+                  notes: q.notes ?? "",
+                  items,
+                  totalHT: q.total_amount_ht ?? 0,
+                  tvaMap,
+                  totalTVA,
+                  totalTTC: (q.total_amount_ht ?? 0) + totalTVA,
+                  guestCount: request.guest_count,
+                  eventDate: request.event_date,
+                  eventAddress: request.event_address,
+                  mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type,
+                };
+                return (
+                  <div className="flex flex-col gap-3">
+                    <QuoteSummary quote={quote} />
+                    <QuoteViewerButton caterer={catererInfo} data={previewData} />
+                  </div>
+                );
+              })()}
 
               {/* Historique avec ce client */}
               <>

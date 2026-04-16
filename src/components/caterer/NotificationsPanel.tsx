@@ -25,11 +25,11 @@ interface NotificationsPanelProps {
 
 export default function NotificationsPanel({ notifications }: NotificationsPanelProps) {
   return (
-    <div className="bg-white rounded-lg p-6 flex flex-col gap-4" style={{ width: "324px" }}>
+    <div className="bg-white rounded-lg p-6 flex flex-col gap-4 w-full md:w-[324px]">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2
-          className="font-display font-bold text-xl text-[#111827]"
+          className="font-display font-bold text-2xl text-[#111827]"
           style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
         >
           Notifications
@@ -42,8 +42,6 @@ export default function NotificationsPanel({ notifications }: NotificationsPanel
           Voir tout
         </Link>
       </div>
-
-      <div className="h-px bg-[#e5e7eb]" />
 
       {/* Liste */}
       <div className="flex flex-col gap-6">

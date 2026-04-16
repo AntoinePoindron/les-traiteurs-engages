@@ -47,7 +47,7 @@ export default function RequestCard({ request }: RequestCardProps) {
       className="block border border-[#f2f2f2] rounded-lg p-6 hover:border-navy/20 hover:shadow-sm transition-all"
     >
       {/* Badge + nom */}
-      <div className="flex flex-col gap-1 mb-4">
+      <div className="flex flex-col items-start gap-1 mb-4">
         {request.is_new && <StatusBadge variant="new" />}
         <h3
           className="font-display font-bold text-xl text-black"
@@ -82,7 +82,7 @@ export default function RequestCard({ request }: RequestCardProps) {
         )}
         <InfoChip
           icon={Users}
-          label="Nombre de couverts"
+          label="Couverts"
           value={String(request.guest_count)}
         />
         <InfoChip

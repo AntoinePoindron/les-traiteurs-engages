@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import Sidebar from "@/components/layout/Sidebar";
+import NavWrapper from "@/components/layout/NavWrapper";
+import NotificationCenter from "@/components/layout/NotificationCenter";
 import type { UserRole } from "@/types/database";
 
 export default async function DashboardLayout({
@@ -56,16 +57,19 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-cream">
-      <Sidebar
+      <NavWrapper
         role={profile.role}
         catererName={catererName}
         companyName={companyName}
         userName={userName}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* pt-14 sur mobile pour compenser la topbar fixe */}
+      <div className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
         {children}
       </div>
+
+      <NotificationCenter />
     </div>
   );
 }

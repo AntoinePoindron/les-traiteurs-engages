@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import RequestCard from "@/components/caterer/RequestCard";
-import NotificationsPanel from "@/components/caterer/NotificationsPanel";
 import UpcomingOrdersPanel from "@/components/caterer/UpcomingOrdersPanel";
 import Link from "next/link";
-import type { Notification, QuoteRequest } from "@/types/database";
+import type { QuoteRequest } from "@/types/database";
 
 export default async function CatererDashboardPage() {
   const supabase = await createClient();
@@ -89,16 +88,6 @@ export default async function CatererDashboardPage() {
     })
     .filter(Boolean) as Array<Parameters<typeof RequestCard>[0]["request"]>;
 
-  // ── Notifications ───────────────────────────────────────────
-  const { data: notificationsData } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", user!.id)
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  const notifications = (notificationsData ?? []) as Notification[];
-
   // ── Commandes à venir ───────────────────────────────────────
   const { data: upcomingOrdersData } = await supabase
     .from("orders")
@@ -159,7 +148,7 @@ export default async function CatererDashboardPage() {
               Chiffres clés
             </h2>
 
-            <div className="flex gap-12 flex-wrap">
+            <div className="flex gap-12 flex-wrap pr-36">
               <KpiStat value={String(newRequestsCount ?? 0)} label="Nouvelles demandes" />
               <KpiStat value={String(pendingQuotesCount ?? 0)} label="Devis en attente" />
               <KpiStat value={String(activeOrdersCount ?? 0)} label="Commandes en cours" />
@@ -169,24 +158,21 @@ export default async function CatererDashboardPage() {
               />
             </div>
 
-            {/* Image décorative (top-right) */}
-            <div
-              className="absolute top-0 right-0 w-36 h-36 opacity-80 pointer-events-none"
+            {/* Image décorative (bas droite) */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/decoration-chiffres-cles.png"
+              alt=""
               aria-hidden
-            >
-              {/* Placeholder cercle décoratif terracotta */}
-              <div
-                className="w-full h-full rounded-bl-lg"
-                style={{ background: "radial-gradient(circle at 80% 20%, #C4714A 0%, #FF5455 60%, transparent 100%)", opacity: 0.15 }}
-              />
-            </div>
+              className="absolute bottom-0 right-0 h-36 w-auto pointer-events-none select-none"
+            />
           </div>
 
           {/* ── Contenu principal : demandes + panneau droit ── */}
-          <div className="flex gap-6 items-start">
+          <div className="flex flex-col md:flex-row gap-6 items-start">
 
             {/* Colonne gauche : demandes à traiter */}
-            <div className="flex-1 min-w-0 bg-white rounded-lg p-6 flex flex-col gap-6">
+            <div className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6">
               <div className="flex items-center justify-between">
                 <h2
                   className="font-display font-bold text-2xl text-black"
@@ -216,9 +202,8 @@ export default async function CatererDashboardPage() {
               )}
             </div>
 
-            {/* Colonne droite : notifications + commandes à venir */}
-            <div className="flex flex-col gap-6 shrink-0">
-              <NotificationsPanel notifications={notifications} />
+            {/* Colonne droite : commandes à venir */}
+            <div className="w-full md:w-auto md:shrink-0">
               <UpcomingOrdersPanel orders={upcomingOrders} />
             </div>
 

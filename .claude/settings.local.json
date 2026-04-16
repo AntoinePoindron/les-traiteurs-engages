@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Read(//e/Claude Projects/**)",
+      "Bash(npx create-next-app@latest les-traiteurs-engages --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(cp -r \"E:/Claude Projects/les-traiteurs-engages/.\" \"E:/Claude Projects/Les Traiteurs Engagés V3/\")",
+      "Bash(rm -rf \"E:/Claude Projects/les-traiteurs-engages\")",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\('next:', p.dependencies.next, '\\\\ntailwind:', p.devDependencies.tailwindcss\\)\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

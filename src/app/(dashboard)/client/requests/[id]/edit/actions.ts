@@ -171,6 +171,11 @@ export async function updateQuoteRequest(
   revalidatePath(`/client/requests/${requestId}`);
   revalidatePath("/client/requests");
   revalidatePath("/client/dashboard");
+  // Admin side: the qualification page recomputes caterer matching from
+  // the request's fields, so any content edit can change the result
+  // (e.g. new address brings matching caterers into range).
+  revalidatePath(`/admin/qualification/${requestId}`);
+  revalidatePath("/admin/qualification");
 
   return { ok: true };
 }

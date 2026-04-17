@@ -6,6 +6,12 @@ import CompareRequestApproval from "./CompareRequestApproval";
 import { findMatchingCaterers } from "@/lib/caterer-matching";
 import { formatDateTime } from "@/lib/format";
 
+// Always re-fetch on each request. The matching algorithm depends on
+// request fields that the client can edit (address, guest count, dietary),
+// so we must never serve this page from a cache to avoid showing stale
+// "no match" results after a client edit.
+export const dynamic = "force-dynamic";
+
 const SERVICE_LABELS: Record<string, string> = {
   petit_dejeuner: "Petit déjeuner", pause_gourmande: "Pause gourmande",
   plateaux_repas: "Plateaux repas", cocktail_dinatoire: "Cocktail dinatoire",

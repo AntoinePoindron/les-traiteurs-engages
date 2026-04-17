@@ -3,6 +3,10 @@ import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { ChevronRight, Calendar, Users, MapPin, LayoutGrid } from "lucide-react";
 
+// Never serve from cache: clients can edit their request at any time
+// (address, guest count, etc.), which affects the qualification queue.
+export const dynamic = "force-dynamic";
+
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
 type QFilter = "pending" | "sent" | "cancelled";

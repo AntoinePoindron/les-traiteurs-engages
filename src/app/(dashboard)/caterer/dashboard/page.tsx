@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import UpcomingOrdersPanel from "@/components/caterer/UpcomingOrdersPanel";
+import PendingQualificationBanner from "@/components/caterer/PendingQualificationBanner";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Link from "next/link";
 import { Inbox, Clock, ShoppingBag, TrendingUp, ChevronRight, Euro, Users, MapPin, Building2 } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -27,12 +29,19 @@ export default async function CatererDashboardPage() {
 
   const { data: profileData } = await supabase
     .from("users")
-    .select("first_name, caterer_id")
+    .select("first_name, caterer_id, caterers(name, logo_url, is_validated)")
     .eq("id", user!.id)
     .single();
 
-  const profile = profileData as { first_name: string | null; caterer_id: string | null } | null;
+  const profile = profileData as {
+    first_name: string | null;
+    caterer_id: string | null;
+    caterers: { name: string; logo_url: string | null; is_validated: boolean } | null;
+  } | null;
   const catererId = profile?.caterer_id;
+  const catererName = profile?.caterers?.name;
+  const catererLogoUrl = profile?.caterers?.logo_url;
+  const catererIsValidated = profile?.caterers?.is_validated ?? true;
 
   // ── KPIs ────────────────────────────────────────────────────
 
@@ -172,14 +181,27 @@ export default async function CatererDashboardPage() {
       <div className="pt-[54px] px-6 pb-12">
         <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
+          {!catererIsValidated && <PendingQualificationBanner />}
+
           {/* Titre */}
-          <div>
-            <h1
-              className="font-display font-bold text-4xl text-black"
-              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-            >
-              Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
-            </h1>
+          <div className="flex items-center gap-4 min-w-0">
+            {catererLogoUrl && (
+              <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={catererLogoUrl} alt="" className="w-full h-full object-contain p-1" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1
+                className="font-display font-bold text-4xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
+              </h1>
+              {catererName && (
+                <p className="text-sm text-[#6B7280] mt-1 truncate" style={mFont}>{catererName}</p>
+              )}
+            </div>
           </div>
 
           {/* KPI cards */}
@@ -247,7 +269,7 @@ export default async function CatererDashboardPage() {
                         <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
                         <div className="flex flex-col gap-1 min-w-0">
                           {/* Titre + entité */}
-                          <div className="flex items-baseline gap-1.5 min-w-0">
+                          <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
                             <p className="text-sm font-bold text-black truncate" style={mFont}>
                               {mealLabel}
                             </p>
@@ -256,6 +278,9 @@ export default async function CatererDashboardPage() {
                                 {req.company_name}
                               </p>
                             )}
+                            <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
+                              Créée le {formatDateTime(req.created_at)}
+                            </span>
                           </div>
                           {/* Infos compactes */}
                           <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">

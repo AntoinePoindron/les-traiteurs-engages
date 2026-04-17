@@ -23,6 +23,16 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Rôle + company de l'utilisateur (l'admin voit toute la company)
+  const { data: profileData } = await supabase
+    .from("users")
+    .select("role, company_id")
+    .eq("id", user!.id)
+    .single();
+  const profile = profileData as { role: string; company_id: string | null } | null;
+  const isAdmin = profile?.role === "client_admin";
+  const companyId = profile?.company_id ?? "";
+
   // ── Requête principale ───────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
@@ -33,17 +43,23 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
       created_at, status,
       quote_request_caterers ( status, caterers ( logo_url, name ) ),
       quotes ( status )
-    `)
-    .eq("client_user_id", user!.id);
+    `);
+  if (isAdmin) {
+    query = query.eq("company_id", companyId);
+  } else {
+    query = query.eq("client_user_id", user!.id);
+  }
 
   // Filtre statut
   switch (activeFilter) {
     case "pending":
-      // "soumises" = tout ce qui n'est pas encore une commande ou annulé
-      query = query.not("status", "in", '("completed","cancelled")');
+      // "en attente" = pas encore de commande, pas annulé, pas tous les devis refusés
+      query = query.not("status", "in", '("completed","cancelled","quotes_refused")');
       break;
     case "closed":
-      query = query.in("status", ["completed", "cancelled"]);
+      // "Clôturées" = annulées ou tous devis refusés (les "Commande créée"
+      // = status 'completed' sont dans leur propre onglet "accepted").
+      query = query.in("status", ["cancelled", "quotes_refused"]);
       break;
     // "quotes" et "accepted" : on filtre après transformation
   }
@@ -103,6 +119,10 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
   });
 
   // Filtres post-transformation
+  if (activeFilter === "pending") {
+    // "En attente de devis" : aucun devis reçu et pas encore de commande
+    requests = requests.filter((r) => r.quotes_received_count === 0 && !r.has_accepted_quote);
+  }
   if (activeFilter === "quotes") {
     requests = requests.filter((r) => r.quotes_received_count > 0 && !r.has_accepted_quote);
   }
@@ -186,7 +206,7 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
                     className="text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70 transition-opacity"
                     style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                   >
-                    Déposer ma première demande
+                    Déposer une demande
                   </Link>
                 )}
               </div>

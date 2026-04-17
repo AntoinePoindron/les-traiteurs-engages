@@ -7,7 +7,6 @@ import { Search } from "lucide-react";
 export type RequestFilter =
   | "all"
   | "new"
-  | "pending"
   | "sent"
   | "accepted"
   | "refused"
@@ -16,9 +15,8 @@ export type RequestFilter =
 const TABS: { value: RequestFilter; label: string }[] = [
   { value: "all",      label: "Toutes" },
   { value: "new",      label: "Nouvelle" },
-  { value: "pending",  label: "Devis en attente" },
   { value: "sent",     label: "Devis envoyé" },
-  { value: "accepted", label: "Devis accepté" },
+  { value: "accepted", label: "Commande créée" },
   { value: "refused",  label: "Devis refusé" },
   { value: "archived", label: "Archivées" },
 ];

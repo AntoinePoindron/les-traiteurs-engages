@@ -52,19 +52,48 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Rôle + company (l'admin voit toutes les commandes de la company)
+  const { data: profileData } = await supabase
+    .from("users")
+    .select("role, company_id")
+    .eq("id", user!.id)
+    .single();
+  const profile = profileData as { role: string; company_id: string | null } | null;
+  const isAdmin = profile?.role === "client_admin";
+  const companyId = profile?.company_id ?? "";
+
+  // Pour l'admin : on filtre via quote_requests.company_id (toutes les commandes
+  // de la company, peu importe quel collaborateur les a passées).
+  // Pour le client_user : ses propres commandes uniquement (client_admin_id).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
     .from("orders")
-    .select(`
+    .select(
+      isAdmin
+        ? `
+      id, status, delivery_date, delivery_address, created_at,
+      quotes!inner (
+        total_amount_ht, valorisable_agefiph,
+        caterers ( name, city, logo_url ),
+        quote_requests!inner ( id, title, guest_count, event_date, meal_type, service_type, company_id )
+      )
+    `
+        : `
       id, status, delivery_date, delivery_address, created_at,
       quotes!inner (
         total_amount_ht, valorisable_agefiph,
         caterers ( name, city, logo_url ),
         quote_requests ( id, title, guest_count, event_date, meal_type, service_type )
       )
-    `)
-    .eq("client_admin_id", user!.id)
+    `
+    )
     .order("created_at", { ascending: false });
+
+  if (isAdmin) {
+    query = query.eq("quotes.quote_requests.company_id", companyId);
+  } else {
+    query = query.eq("client_admin_id", user!.id);
+  }
 
   if (activeFilter !== "all") {
     query = query.eq("status", activeFilter);

@@ -65,8 +65,7 @@ export default function RefuseQuoteButton({ action, quoteId, requestId }: Refuse
           </button>
           <button
             type="submit"
-            disabled={!reason.trim()}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-white disabled:opacity-40 transition-opacity hover:opacity-90"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
             style={{ ...mFont, backgroundColor: "#DC2626" }}
           >
             <XCircle size={12} />

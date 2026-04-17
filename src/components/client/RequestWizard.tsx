@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import BackButton from "@/components/ui/BackButton";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { submitQuoteRequest } from "@/app/(dashboard)/client/requests/new/actions";
 import type { ServiceTypeConfig } from "@/types/database";
 
@@ -19,6 +21,7 @@ export type WizardData = {
   eventAddress: string;
   guestCount: string;
   eventDescription: string;
+  companyServiceId: string;
   // Step 3
   dietVegetarian: boolean;
   dietVegetarianCount: string;
@@ -57,7 +60,7 @@ export type WizardData = {
 
 const INITIAL: WizardData = {
   serviceType: "", isFullDay: false, serviceTypeSecondary: "",
-  eventDate: "", eventStartTime: "", eventEndTime: "", eventAddress: "", guestCount: "", eventDescription: "",
+  eventDate: "", eventStartTime: "", eventEndTime: "", eventAddress: "", guestCount: "", eventDescription: "", companyServiceId: "",
   dietVegetarian: false, dietVegetarianCount: "", dietHalal: false, dietGlutenFree: false, dietGlutenFreeCount: "", dietBio: false, dietOther: "",
   drinksWaterStill: false, drinksWaterSparkling: false, drinksSoft: false, drinksSoftDetails: "", drinksAlcohol: false, drinksAlcoholDetails: "", drinksHot: false,
   serviceWaitstaff: false, serviceEquipment: false, serviceEquipmentVerres: false, serviceEquipmentNappes: false, serviceEquipmentTables: false, serviceEquipmentOther: "", serviceSetup: false, serviceSetupTime: "", serviceSetupOther: "",
@@ -382,7 +385,15 @@ function Step1({
   );
 }
 
-function Step2({ data, update }: { data: WizardData; update: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void }) {
+function Step2({
+  data,
+  update,
+  companyServices,
+}: {
+  data: WizardData;
+  update: <K extends keyof WizardData>(k: K, v: WizardData[K]) => void;
+  companyServices: { id: string; name: string }[];
+}) {
   return (
     <Card title="Parlez-nous de votre événement">
       <div className="flex flex-col gap-5">
@@ -408,6 +419,25 @@ function Step2({ data, update }: { data: WizardData; update: <K extends keyof Wi
           <Label required>Nombre de personnes</Label>
           <Input type="number" min="1" value={data.guestCount} onChange={e => update("guestCount", e.target.value)} placeholder="Ex : 50" />
         </div>
+        {companyServices.length > 0 && (
+          <div>
+            <Label>Service interne rattaché <span className="text-[#9CA3AF] font-normal">(optionnel)</span></Label>
+            <select
+              value={data.companyServiceId}
+              onChange={e => update("companyServiceId", e.target.value)}
+              className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black bg-white focus:outline-none focus:border-[#1A3A52] transition-colors"
+              style={mFont}
+            >
+              <option value="">— Aucun service —</option>
+              {companyServices.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[#9CA3AF]" style={mFont}>
+              Permet de suivre cette dépense dans le budget du service.
+            </p>
+          </div>
+        )}
         <div>
           <Label>Type d&apos;événement <span className="text-[#9CA3AF] font-normal">(optionnel)</span></Label>
           <Textarea
@@ -786,14 +816,22 @@ function Step7({ data, update, catererData, isCompareMode }: {
 export default function RequestWizard({
   catererData,
   isCompareMode,
+  companyServices = [],
+  defaultCompanyServiceId = null,
 }: {
   catererData: { id: string; name: string; service_config: Record<string, ServiceTypeConfig> } | null;
   isCompareMode: boolean;
+  companyServices?: { id: string; name: string }[];
+  defaultCompanyServiceId?: string | null;
 }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<WizardData>(INITIAL);
+  const [data, setData] = useState<WizardData>({
+    ...INITIAL,
+    companyServiceId: defaultCompanyServiceId ?? "",
+  });
   const [submitting, setSubmitting] = useState(false);
+  const [quitConfirmOpen, setQuitConfirmOpen] = useState(false);
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
@@ -818,14 +856,24 @@ export default function RequestWizard({
     return true;
   })();
 
+  function handleQuit() {
+    const hasData = data.serviceType || data.eventDate || data.eventAddress || data.guestCount;
+    if (hasData) {
+      setQuitConfirmOpen(true);
+      return;
+    }
+    router.push("/client/dashboard");
+  }
+
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8" }}>
       <div className="max-w-[720px] mx-auto px-4 pt-8 pb-32">
         <div className="flex flex-col gap-4">
+          <BackButton label="Quitter la demande" onClick={handleQuit} />
           <Stepper step={step} />
 
           {step === 1 && <Step1 data={data} update={update} catererData={catererData} />}
-          {step === 2 && <Step2 data={data} update={update} />}
+          {step === 2 && <Step2 data={data} update={update} companyServices={companyServices} />}
           {step === 3 && <Step3 data={data} update={update} />}
           {step === 4 && <Step4 data={data} update={update} />}
           {step === 5 && <Step5 data={data} update={update} />}
@@ -833,6 +881,20 @@ export default function RequestWizard({
           {step === 7 && <Step7 data={data} update={update} catererData={catererData} isCompareMode={isCompareMode} />}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={quitConfirmOpen}
+        title="Quitter la demande ?"
+        message="Les informations saisies seront perdues. Cette action est irréversible."
+        confirmLabel="Quitter"
+        cancelLabel="Continuer la demande"
+        variant="danger"
+        onConfirm={() => {
+          setQuitConfirmOpen(false);
+          router.push("/client/dashboard");
+        }}
+        onClose={() => setQuitConfirmOpen(false)}
+      />
 
       {/* Sticky bottom nav */}
       <div

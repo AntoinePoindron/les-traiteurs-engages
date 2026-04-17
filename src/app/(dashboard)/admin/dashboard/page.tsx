@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { CheckSquare, ChefHat, Building2, ShoppingBag, ChevronRight, Calendar, Users, LayoutGrid } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
@@ -163,13 +164,16 @@ export default async function AdminDashboardPage() {
                         </div>
                         <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
                           <div className="flex flex-col gap-1 min-w-0">
-                            <div className="flex items-baseline gap-2 min-w-0">
+                            <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
                               <p className="text-sm font-bold text-black truncate" style={mFont}>{serviceLabel}</p>
                               {req.companies?.name && (
                                 <p className="text-xs text-[#9CA3AF] truncate shrink-0" style={mFont}>
                                   {req.companies.name}
                                 </p>
                               )}
+                              <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
+                                Créée le {formatDateTime(req.created_at)}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>

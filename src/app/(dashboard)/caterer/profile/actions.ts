@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { geocodeAddress } from "@/lib/geocoding";
 
 export type ServiceConfig = {
   enabled: boolean;
@@ -48,6 +49,18 @@ export async function updateCatererProfile(
     ?.caterer_id;
   if (!catererId) return { error: "Traiteur introuvable" };
 
+  // Géocoder si l'adresse est renseignée (Nominatim, pas de clé, ~1s).
+  // Non bloquant : si le géocodage échoue, on stocke null — le traiteur
+  // ne sera juste pas matché par rayon en mode comparer-3.
+  let coords: { lat: number; lng: number } | null = null;
+  if (data.address || data.zip_code || data.city) {
+    coords = await geocodeAddress({
+      address: data.address,
+      city:    data.city,
+      zipCode: data.zip_code,
+    });
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any)
     .from("caterers")
@@ -66,6 +79,8 @@ export async function updateCatererProfile(
       dietary_bio: data.dietary_bio,
       service_config: data.service_config,
       photos: data.photos,
+      latitude:  coords?.lat ?? null,
+      longitude: coords?.lng ?? null,
     })
     .eq("id", catererId);
 

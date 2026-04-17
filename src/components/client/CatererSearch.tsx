@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { MapPin, Calendar, Users, ChevronRight, Search } from "lucide-react";
+import { MapPin, Calendar, Users, ChevronRight, Building2, LayoutGrid } from "lucide-react";
 import type { Caterer, ServiceTypeConfig } from "@/types/database";
 
 // ── Constants ─────────────────────────────────────────────────
@@ -62,14 +62,29 @@ function catererMatchesBudget(caterer: Caterer, budgetKeys: string[]): boolean {
   });
 }
 
-function StarRating({ score }: { score: number }) {
+// ── Search input field ────────────────────────────────────────
+
+function SearchField({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <svg key={i} width="12" height="12" viewBox="0 0 24 24" fill={i <= Math.round(score) ? "#FBBF24" : "#E5E7EB"}>
-          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-        </svg>
-      ))}
+    <div className="flex flex-col gap-1.5">
+      <p
+        className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+        style={{ letterSpacing: "0.08em", ...mFont }}
+      >
+        {label}
+      </p>
+      <div className="flex items-center gap-2 border border-[#E5E7EB] rounded-lg px-3 py-2.5 bg-white focus-within:border-[#1A3A52] hover:border-[#D1D5DB] focus-within:hover:border-[#1A3A52] transition-colors">
+        <Icon size={15} className="shrink-0 text-[#9CA3AF]" />
+        {children}
+      </div>
     </div>
   );
 }
@@ -80,39 +95,66 @@ function FilterRow({
   label,
   checked,
   onToggle,
-  count,
 }: {
   label: string;
   checked: boolean;
   onToggle: () => void;
-  count?: number;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
-      className="flex items-center justify-between w-full cursor-pointer"
+      className="flex items-center gap-2.5 w-full px-2 py-1.5 -mx-2 rounded-md hover:bg-[#F5F1E8] cursor-pointer transition-colors"
     >
-      <div className="flex items-center gap-2">
-        <div
-          className="shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors"
-          style={{
-            borderColor: checked ? "#1A3A52" : "#1A1A1A",
-            backgroundColor: checked ? "#1A3A52" : "transparent",
-          }}
-        >
-          {checked && (
-            <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-              <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </div>
-        <span className="text-xs text-black" style={mFont}>{label}</span>
+      <div
+        className="shrink-0 w-4 h-4 rounded-md border-[1.5px] flex items-center justify-center transition-colors"
+        style={{
+          borderColor: checked ? "#1A3A52" : "#D1D5DB",
+          backgroundColor: checked ? "#1A3A52" : "transparent",
+        }}
+      >
+        {checked && (
+          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </div>
-      {count !== undefined && (
-        <span className="text-xs text-[#A6A6A6]" style={mFont}>{count}</span>
-      )}
+      <span className="text-sm text-black" style={mFont}>{label}</span>
     </button>
+  );
+}
+
+function FilterSection({
+  label,
+  count,
+  children,
+}: {
+  label: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <p
+          className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+          style={{ letterSpacing: "0.08em", ...mFont }}
+        >
+          {label}
+        </p>
+        {count > 0 && (
+          <span
+            className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold text-white"
+            style={{ backgroundColor: "#1A3A52", ...mFont }}
+          >
+            {count}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -147,6 +189,8 @@ export default function CatererSearch({ initialCaterers }: Props) {
     setBudgetFilters([]);
     setDietaryFilters([]);
   }
+
+  const totalActiveFilters = budgetFilters.length + dietaryFilters.length;
 
   // Filtered results
   const filtered = useMemo(() => {
@@ -190,12 +234,53 @@ export default function CatererSearch({ initialCaterers }: Props) {
           </h1>
 
           {/* Search block */}
-          <div className="bg-white rounded-lg p-6 flex flex-col gap-6 overflow-hidden relative">
+          <div className="bg-white rounded-lg p-5 flex flex-col gap-5">
+
+            {/* Inputs row */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <SearchField label="Localisation" icon={MapPin}>
+                <input
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Ville, code postal…"
+                  className="flex-1 text-sm outline-none bg-transparent text-black placeholder-[#9CA3AF] min-w-0"
+                  style={mFont}
+                />
+              </SearchField>
+              <SearchField label="Date de l'événement" icon={Calendar}>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="flex-1 text-sm outline-none bg-transparent text-black min-w-0"
+                  style={mFont}
+                />
+              </SearchField>
+              <SearchField label="Nombre de personnes" icon={Users}>
+                <input
+                  type="number"
+                  min={1}
+                  value={guestCount}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  placeholder="Ex : 50"
+                  className="flex-1 text-sm outline-none bg-transparent text-black placeholder-[#9CA3AF] min-w-0"
+                  style={mFont}
+                />
+              </SearchField>
+            </div>
+
+            <div className="border-t border-[#F3F4F6]" />
 
             {/* Type de prestation */}
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-bold text-black" style={mFont}>Type de prestation</p>
-              <div className="flex flex-wrap gap-2">
+              <p
+                className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+                style={{ letterSpacing: "0.08em", ...mFont }}
+              >
+                Type de prestation
+              </p>
+              <div className="flex flex-wrap gap-1.5">
                 {SERVICE_TYPES.map(({ key, label }) => {
                   const active = selectedType === key;
                   return (
@@ -203,12 +288,11 @@ export default function CatererSearch({ initialCaterers }: Props) {
                       key={key}
                       type="button"
                       onClick={() => setSelectedType(active ? null : key)}
-                      className="px-3 py-2 rounded-full text-xs font-bold transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer"
                       style={{
                         ...mFont,
                         backgroundColor: active ? "#1A3A52" : "#F5F1E8",
                         color: active ? "#FFFFFF" : "#1A3A52",
-                        border: active ? "1px solid #1A3A52" : "1px solid transparent",
                       }}
                     >
                       {label}
@@ -218,99 +302,34 @@ export default function CatererSearch({ initialCaterers }: Props) {
               </div>
             </div>
 
-            {/* Inputs row */}
-            <div className="flex flex-wrap gap-6">
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-bold text-black" style={mFont}>Localisation</p>
-                <div className="flex items-center gap-2 border border-black rounded-lg px-3 py-2.5 bg-white w-[220px]">
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Ville, code postal..."
-                    className="flex-1 text-xs outline-none bg-transparent text-black placeholder-[#BFBFBF]"
-                    style={mFont}
-                  />
-                  <MapPin size={16} className="shrink-0 text-[#9CA3AF]" />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-bold text-black" style={mFont}>Date de l&apos;événement</p>
-                <div className="flex items-center gap-2 border border-black rounded-lg px-3 py-2.5 bg-white w-[220px]">
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="flex-1 text-xs outline-none bg-transparent text-black"
-                    style={mFont}
-                  />
-                  <Calendar size={16} className="shrink-0 text-[#9CA3AF]" />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-bold text-black" style={mFont}>Nombre de personnes</p>
-                <div className="flex items-center gap-2 border border-black rounded-lg px-3 py-2.5 bg-white w-[220px]">
-                  <input
-                    type="number"
-                    min={1}
-                    value={guestCount}
-                    onChange={(e) => setGuestCount(e.target.value)}
-                    placeholder="Ex : 50"
-                    className="flex-1 text-xs outline-none bg-transparent text-black placeholder-[#BFBFBF]"
-                    style={mFont}
-                  />
-                  <Users size={16} className="shrink-0 text-[#9CA3AF]" />
-                </div>
-              </div>
-            </div>
-
-            {/* CTAs */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold text-white cursor-pointer hover:opacity-90 transition-opacity"
-                style={{ ...mFont, backgroundColor: "#1A3A52" }}
-              >
-                <Search size={14} />
-                Rechercher
-              </button>
-              <Link
-                href="/client/requests/new?mode=compare"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
-                style={{ ...mFont, backgroundColor: "#C4714A" }}
-              >
-                Comparer 3 devis
-              </Link>
-            </div>
           </div>
 
           {/* Body: filters + results */}
           <div className="flex gap-6 items-start">
 
-            {/* ── Filtres ── */}
-            <div className="bg-white rounded-lg p-6 flex flex-col gap-5 shrink-0" style={{ width: 260 }}>
+            {/* ── Sidebar gauche : filtres + compare ── */}
+            <div className="sticky top-4 flex flex-col gap-4 shrink-0 self-start" style={{ width: 260 }}>
+
+              {/* ── Filtres ── */}
+              <aside className="bg-white rounded-lg p-5 flex flex-col gap-5">
               <div className="flex items-center justify-between">
                 <p
-                  className="font-display font-bold text-xl text-black"
+                  className="font-display font-bold text-lg text-black"
                   style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                 >
                   Filtres
                 </p>
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="text-xs font-bold text-[#1A3A52] underline cursor-pointer"
-                  style={mFont}
-                >
-                  Réinitialiser
-                </button>
+                {totalActiveFilters > 0 && (
+                  <span
+                    className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: "#F5F1E8", color: "#1A3A52", ...mFont }}
+                  >
+                    {totalActiveFilters} actif{totalActiveFilters > 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
 
-              {/* Budget */}
-              <div className="flex flex-col gap-3">
-                <p className="text-xs font-bold text-black" style={mFont}>Budget par personne</p>
+              <FilterSection label="Budget / personne" count={budgetFilters.length}>
                 {BUDGET_FILTERS.map((f) => (
                   <FilterRow
                     key={f.key}
@@ -319,13 +338,11 @@ export default function CatererSearch({ initialCaterers }: Props) {
                     onToggle={() => toggleBudget(f.key)}
                   />
                 ))}
-              </div>
+              </FilterSection>
 
-              <div className="border-t border-[#f2f2f2]" />
+              <div className="border-t border-[#F3F4F6]" />
 
-              {/* Régimes alimentaires */}
-              <div className="flex flex-col gap-3">
-                <p className="text-xs font-bold text-black" style={mFont}>Options de régime alimentaire</p>
+              <FilterSection label="Régimes alimentaires" count={dietaryFilters.length}>
                 {DIETARY_FILTERS.map((f) => (
                   <FilterRow
                     key={f.key}
@@ -334,6 +351,50 @@ export default function CatererSearch({ initialCaterers }: Props) {
                     onToggle={() => toggleDietary(f.key)}
                   />
                 ))}
+              </FilterSection>
+
+              {totalActiveFilters > 0 && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="mt-1 inline-flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626]/30 hover:bg-[#FFF5F5] transition-colors"
+                  style={mFont}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                  Réinitialiser
+                </button>
+              )}
+              </aside>
+
+              {/* ── Bloc "Comparer 3 devis" ── */}
+              <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: "#C4714A" }}
+                  >
+                    <LayoutGrid size={15} className="text-white" />
+                  </div>
+                  <p
+                    className="font-display font-bold text-base text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Comparer 3 devis
+                  </p>
+                </div>
+                <p className="text-xs text-[#6B7280] leading-relaxed" style={mFont}>
+                  Remplissez une seule demande et recevez les devis des 3 premiers
+                  traiteurs qui correspondent à vos critères.
+                </p>
+                <Link
+                  href="/client/requests/new?mode=compare"
+                  className="mt-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                  style={{ ...mFont, backgroundColor: "#C4714A" }}
+                >
+                  Lancer la demande
+                </Link>
               </div>
             </div>
 
@@ -374,87 +435,124 @@ export default function CatererSearch({ initialCaterers }: Props) {
 function CatererCard({ caterer }: { caterer: Caterer }) {
   const services = getEnabledServices(caterer);
   const photo = caterer.photos?.[0] ?? null;
-  // Placeholder rating (real ratings not in DB yet)
-  const rating = 4.8;
-  const reviewCount = 0;
+  const logo  = caterer.logo_url ?? null;
+
+  const minPrice = services
+    .map((s) => s.priceMin)
+    .filter((p): p is number => p != null)
+    .reduce<number | null>((acc, p) => (acc == null || p < acc ? p : acc), null);
+
+  const locationStr = caterer.city
+    ? `${caterer.city}${caterer.zip_code ? ` (${caterer.zip_code.slice(0, 2)})` : ""}`
+    : null;
 
   return (
     <Link
       href={`/client/caterers/${caterer.id}`}
-      className="bg-white rounded-lg border border-[#F2F2F2] flex items-stretch hover:border-[#1A3A52] transition-colors group"
+      className="bg-white rounded-lg border border-[#F3F4F6] flex items-stretch overflow-hidden hover:border-[#1A3A52] hover:shadow-md transition-all group"
     >
-      {/* Photo */}
-      <div className="shrink-0 w-[150px] rounded-l-lg overflow-hidden bg-[#F5F1E8] flex items-center justify-center">
+      {/* ── Photo hero ────────────────────────── */}
+      <div className="relative shrink-0 w-[200px] bg-[#F5F1E8] flex items-center justify-center overflow-hidden">
         {photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt={caterer.name} className="w-full h-full object-cover" />
+          <img
+            src={photo}
+            alt=""
+            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-200"
+          />
         ) : (
-          <div className="w-full h-full min-h-[180px] bg-[#EDE9DF] flex items-center justify-center">
-            <span className="text-3xl font-display font-bold text-[#C4714A] opacity-30" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-              {caterer.name.charAt(0)}
-            </span>
-          </div>
+          <span
+            className="text-5xl font-display font-bold text-[#C4714A] opacity-25"
+            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+          >
+            {caterer.name.charAt(0)}
+          </span>
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 px-8 py-4 flex flex-col gap-2">
-        {/* Name + location */}
-        <div className="flex flex-col gap-1">
-          <p
-            className="font-display font-bold text-xl text-black"
-            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-          >
-            {caterer.name}
-          </p>
-          {caterer.city && (
-            <p className="text-xs text-[#313131]" style={mFont}>
-              {caterer.city}{caterer.zip_code ? ` (${caterer.zip_code.slice(0, 2)})` : ""}
-              {caterer.delivery_radius_km ? ` · Livraison jusqu'à ${caterer.delivery_radius_km} km` : ""}
+      {/* ── Contenu ───────────────────────────── */}
+      <div className="flex-1 min-w-0 p-5 flex flex-col gap-3">
+
+        {/* Ligne 1 : logo + nom + ville */}
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-[#F5F1E8] flex items-center justify-center">
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt="" className="w-full h-full object-contain p-1" />
+            ) : (
+              <Building2 size={18} style={{ color: "#C4714A" }} />
+            )}
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <p
+              className="font-display font-bold text-xl text-black truncate leading-tight"
+              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+            >
+              {caterer.name}
             </p>
-          )}
-          {reviewCount > 0 && (
-            <div className="flex items-center gap-2">
-              <StarRating score={rating} />
-              <p className="text-xs text-black" style={mFont}>
-                <span className="font-bold">{rating.toFixed(1)}/5</span>
-                <span className="text-[#313131]"> ({reviewCount} avis)</span>
-              </p>
-            </div>
-          )}
+            {locationStr && (
+              <div className="flex items-center gap-1 text-xs text-[#6B7280] mt-0.5" style={mFont}>
+                <MapPin size={11} className="shrink-0" />
+                <span className="truncate">
+                  {locationStr}
+                  {caterer.delivery_radius_km ? ` · Livre jusqu'à ${caterer.delivery_radius_km} km` : ""}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Description */}
+        {/* Ligne 2 : description */}
         {caterer.description && (
-          <p className="text-xs text-[#313131] leading-[1.5] line-clamp-2" style={mFont}>
+          <p className="text-sm text-[#6B7280] leading-relaxed line-clamp-2" style={mFont}>
             {caterer.description}
           </p>
         )}
 
-        {/* Service chips */}
+        {/* Ligne 3 : prestations */}
         {services.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {services.slice(0, 4).map(({ key, label, priceMin }) => (
+          <div className="flex flex-wrap gap-1.5">
+            {services.slice(0, 4).map(({ key, label }) => (
               <span
                 key={key}
-                className="px-2 py-1 rounded-full text-[10px] text-[#1A3A52]"
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold text-[#1A3A52]"
                 style={{ ...mFont, backgroundColor: "#F5F1E8" }}
               >
-                {label}{priceMin != null ? ` · dès ${priceMin} €/pers.` : ""}
+                {label}
               </span>
             ))}
             {services.length > 4 && (
-              <span className="px-2 py-1 rounded-full text-[10px] text-[#9CA3AF]" style={{ ...mFont, backgroundColor: "#F5F1E8" }}>
+              <span
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold text-[#9CA3AF]"
+                style={{ ...mFont, backgroundColor: "#F5F1E8" }}
+              >
                 +{services.length - 4}
               </span>
             )}
           </div>
         )}
-      </div>
 
-      {/* Chevron */}
-      <div className="shrink-0 flex items-center pr-4 pl-2">
-        <ChevronRight size={18} className="text-[#9CA3AF] group-hover:text-[#1A3A52] transition-colors" />
+        {/* Footer : prix + CTA */}
+        <div className="flex items-center justify-between pt-3 mt-auto border-t border-[#F3F4F6]">
+          {minPrice != null ? (
+            <p className="text-xs text-[#6B7280]" style={mFont}>
+              À partir de{" "}
+              <span className="text-base font-bold text-black">{minPrice} €</span>
+              <span className="text-[11px]"> / pers.</span>
+            </p>
+          ) : (
+            <p className="text-xs text-[#9CA3AF] italic" style={mFont}>
+              Prix sur demande
+            </p>
+          )}
+          <span
+            className="inline-flex items-center gap-1 text-xs font-bold text-[#1A3A52] group-hover:gap-2 transition-all"
+            style={mFont}
+          >
+            Voir la fiche
+            <ChevronRight size={13} />
+          </span>
+        </div>
       </div>
     </Link>
   );

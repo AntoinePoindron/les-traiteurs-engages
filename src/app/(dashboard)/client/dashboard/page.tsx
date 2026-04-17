@@ -2,10 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import {
   Building2, FileText, ShoppingBag, ChevronRight,
   TrendingUp, Users, Euro, ChefHat, LayoutGrid,
+  Calendar, MapPin,
 } from "lucide-react";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import NewRequestDropdown from "@/components/client/NewRequestDropdown";
+import { formatDateTime } from "@/lib/format";
 import type { QuoteRequestStatus, OrderStatus, UserRole } from "@/types/database";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -31,8 +33,8 @@ const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "delivered" | "inv
 };
 
 type ClientBadgeVariant =
-  | "submitted" | "awaiting_quotes" | "quotes_received"
-  | "quote_accepted" | "completed" | "cancelled";
+  | "awaiting_quotes" | "quotes_received"
+  | "completed" | "cancelled";
 
 function resolveVariant(
   status: QuoteRequestStatus,
@@ -41,10 +43,9 @@ function resolveVariant(
 ): ClientBadgeVariant {
   if (status === "cancelled")   return "cancelled";
   if (status === "completed")   return "completed";
-  if (hasAcceptedQuote)         return "quote_accepted";
+  if (hasAcceptedQuote)         return "completed";
   if (quotesReceivedCount > 0)  return "quotes_received";
-  if (status === "sent_to_caterers") return "awaiting_quotes";
-  return "submitted";
+  return "awaiting_quotes";
 }
 
 // ── Page ───────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ export default async function ClientDashboardPage() {
   // Profil + rôle
   const { data: profileData } = await supabase
     .from("users")
-    .select("first_name, role, company_id, companies(name)")
+    .select("first_name, role, company_id, companies(name, logo_url)")
     .eq("id", user!.id)
     .single();
 
@@ -64,36 +65,58 @@ export default async function ClientDashboardPage() {
     first_name: string | null;
     role: UserRole;
     company_id: string | null;
-    companies: { name: string } | null;
+    companies: { name: string; logo_url: string | null } | null;
   } | null;
 
   const isAdmin = profile?.role === "client_admin";
   const companyId = profile?.company_id;
   const companyName = profile?.companies?.name;
+  const companyLogoUrl = profile?.companies?.logo_url;
 
   // ── Demandes en cours ──────────────────────────────────────
+  // Admin : toutes les demandes de la company. User : ses propres demandes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { count: activeCount } = await (supabase as any)
+  const activeCountQuery = (supabase as any)
     .from("quote_requests")
     .select("id", { count: "exact", head: true })
-    .eq("client_user_id", user!.id)
     .not("status", "in", '("completed","cancelled")');
+  if (isAdmin) {
+    activeCountQuery.eq("company_id", companyId ?? "");
+  } else {
+    activeCountQuery.eq("client_user_id", user!.id);
+  }
+  const { count: activeCount } = await activeCountQuery;
 
   // ── Commandes confirmées ───────────────────────────────────
+  // Admin : toutes les commandes de la company.
+  // User : commandes qu'il a passées lui-même.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { count: ordersCount } = await (supabase as any)
+  const ordersCountQuery = (supabase as any)
     .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("client_admin_id", user!.id)
+    .select(
+      isAdmin ? "id, quotes!inner(quote_requests!inner(company_id))" : "id",
+      { count: "exact", head: true }
+    )
     .eq("status", "confirmed");
+  if (isAdmin) {
+    ordersCountQuery.eq("quotes.quote_requests.company_id", companyId ?? "");
+  } else {
+    ordersCountQuery.eq("client_admin_id", user!.id);
+  }
+  const { count: ordersCount } = await ordersCountQuery;
 
   // ── Budget consommé (devis acceptés) ──────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: budgetRows } = await (supabase as any)
+  const budgetQuery = (supabase as any)
     .from("quotes")
-    .select("total_amount_ht, quote_requests!inner(client_user_id)")
-    .eq("status", "accepted")
-    .eq("quote_requests.client_user_id", user!.id);
+    .select("total_amount_ht, quote_requests!inner(company_id, client_user_id)")
+    .eq("status", "accepted");
+  if (isAdmin) {
+    budgetQuery.eq("quote_requests.company_id", companyId ?? "");
+  } else {
+    budgetQuery.eq("quote_requests.client_user_id", user!.id);
+  }
+  const { data: budgetRows } = await budgetQuery;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const budgetTotal: number = (budgetRows ?? []).reduce((s: number, r: any) => s + Number(r.total_amount_ht ?? 0), 0);
@@ -101,60 +124,90 @@ export default async function ClientDashboardPage() {
     ? budgetTotal.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €"
     : "0 €";
 
-  // ── Dernières demandes ─────────────────────────────────────
+  // ── Dernières demandes (hors commandes créées) ─────────────
+  // Admin : toutes les demandes de la company. User : ses propres demandes.
+  // On récupère plus de 5 lignes car on filtre ensuite côté JS celles qui
+  // ont un devis accepté (= commande créée), pour couvrir les demandes legacy
+  // dont le status n'aurait pas été passé à 'completed'.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: recentRaw } = await (supabase as any)
+  const recentQuery = (supabase as any)
     .from("quote_requests")
-    .select("id, title, status, service_type, meal_type, is_compare_mode, event_date, quote_request_caterers ( status, caterers ( logo_url, name ) ), quotes ( status )")
-    .eq("client_user_id", user!.id)
+    .select("id, title, status, service_type, meal_type, is_compare_mode, event_date, created_at, quote_request_caterers ( status, caterers ( logo_url, name ) ), quotes ( status )")
+    .not("status", "in", '("completed","cancelled","quotes_refused")')
+    .order("created_at", { ascending: false })
+    .limit(15);
+  if (isAdmin) {
+    recentQuery.eq("company_id", companyId ?? "");
+  } else {
+    recentQuery.eq("client_user_id", user!.id);
+  }
+  const { data: recentRaw } = await recentQuery;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recentRequests: any[] = (recentRaw ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((req: any) => !(Array.isArray(req.quotes) && req.quotes.some((q: any) => q.status === "accepted")))
+    .slice(0, 5);
+
+  // ── Commandes récentes (admin et non-admin) ───────────────
+  // Admin : toutes les commandes de la company.
+  // User : ses propres commandes (client_admin_id = user.id).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recentOrdersQuery = (supabase as any)
+    .from("orders")
+    .select(
+      isAdmin
+        ? `
+          id, status, delivery_date,
+          quotes!inner (
+            total_amount_ht, valorisable_agefiph,
+            caterers ( name ),
+            quote_requests!inner ( id, title, event_date, company_service_id, service_type, meal_type, company_id )
+          )
+        `
+        : `
+          id, status, delivery_date,
+          quotes!inner (
+            total_amount_ht, valorisable_agefiph,
+            caterers ( name ),
+            quote_requests ( id, title, event_date, company_service_id, service_type, meal_type )
+          )
+        `
+    )
     .order("created_at", { ascending: false })
     .limit(5);
-
+  if (isAdmin) {
+    recentOrdersQuery.eq("quotes.quote_requests.company_id", companyId ?? "");
+  } else {
+    recentOrdersQuery.eq("client_admin_id", user!.id);
+  }
+  const { data: recentOrdersRaw } = await recentOrdersQuery;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recentRequests: any[] = recentRaw ?? [];
+  const recentOrders: any[] = recentOrdersRaw ?? [];
 
   // ── Admin only ─────────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let recentOrders: any[] = [];
   let services: { id: string; name: string; annual_budget: number }[] = [];
   const spendByService: Record<string, number> = {};
   let totalOrdersActive = 0;
   let agefiph = 0;
 
   if (isAdmin && companyId) {
-    // Commandes récentes (toutes statuts)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: ordersRaw } = await (supabase as any)
-      .from("orders")
-      .select(`
-        id, status, delivery_date,
-        quotes!inner (
-          total_amount_ht, valorisable_agefiph,
-          caterers ( name ),
-          quote_requests ( id, title, event_date, company_service_id, service_type, meal_type )
-        )
-      `)
-      .eq("client_admin_id", user!.id)
-      .order("created_at", { ascending: false })
-      .limit(5);
-    recentOrders = ordersRaw ?? [];
-
-    // Commandes actives (confirmed)
+    // Commandes actives (confirmed) — toute la company
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count: activeOrders } = await (supabase as any)
       .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("client_admin_id", user!.id)
+      .select("id, quotes!inner(quote_requests!inner(company_id))", { count: "exact", head: true })
+      .eq("quotes.quote_requests.company_id", companyId)
       .eq("status", "confirmed");
     totalOrdersActive = activeOrders ?? 0;
 
-    // Valorisable AGEFIPH total
+    // Valorisable AGEFIPH total — toute la company
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ageRows } = await (supabase as any)
       .from("quotes")
-      .select("valorisable_agefiph, quote_requests!inner(client_user_id)")
+      .select("valorisable_agefiph, quote_requests!inner(company_id)")
       .eq("status", "accepted")
-      .eq("quote_requests.client_user_id", user!.id);
+      .eq("quote_requests.company_id", companyId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     agefiph = (ageRows ?? []).reduce((s: number, r: any) => s + Number(r.valorisable_agefiph ?? 0), 0);
 
@@ -168,12 +221,12 @@ export default async function ClientDashboardPage() {
       .limit(6);
     services = servicesRaw ?? [];
 
-    // Dépenses par service
+    // Dépenses par service — toute la company
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: expOrders } = await (supabase as any)
       .from("orders")
-      .select(`quotes!inner(total_amount_ht, quote_requests!inner(company_service_id))`)
-      .eq("client_admin_id", user!.id)
+      .select(`quotes!inner(total_amount_ht, quote_requests!inner(company_id, company_service_id))`)
+      .eq("quotes.quote_requests.company_id", companyId)
       .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
     for (const o of expOrders ?? []) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,17 +243,25 @@ export default async function ClientDashboardPage() {
         <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
           {/* Titre + CTA */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1
-                className="font-display font-bold text-4xl text-black"
-                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-              >
-                Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
-              </h1>
-              {companyName && (
-                <p className="text-sm text-[#6B7280] mt-1" style={mFont}>{companyName}</p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              {companyLogoUrl && (
+                <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={companyLogoUrl} alt="" className="w-full h-full object-contain p-1" />
+                </div>
               )}
+              <div className="min-w-0">
+                <h1
+                  className="font-display font-bold text-4xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Bonjour{profile?.first_name ? `, ${profile.first_name}` : ""} !
+                </h1>
+                {companyName && (
+                  <p className="text-sm text-[#6B7280] mt-1 truncate" style={mFont}>{companyName}</p>
+                )}
+              </div>
             </div>
             <NewRequestDropdown />
           </div>
@@ -225,8 +286,8 @@ export default async function ClientDashboardPage() {
             </div>
           )}
 
-          {/* Layout 2 colonnes pour admin, 1 colonne pour user */}
-          <div className={isAdmin ? "flex flex-col lg:flex-row gap-6 items-start" : "flex flex-col gap-6"}>
+          {/* Layout 2 colonnes : demandes à gauche, commandes (+ widgets admin) à droite */}
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
 
             {/* Colonne gauche : demandes récentes */}
             <div className="flex-1 min-w-0 bg-white rounded-lg p-6 flex flex-col gap-4">
@@ -254,7 +315,7 @@ export default async function ClientDashboardPage() {
                     className="text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70 transition-opacity"
                     style={mFont}
                   >
-                    Déposer ma première demande
+                    Déposer une demande
                   </Link>
                 </div>
               ) : (
@@ -289,9 +350,14 @@ export default async function ClientDashboardPage() {
 
                         <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
                           <div className="flex flex-col gap-0.5 min-w-0">
-                            <p className="text-sm font-bold text-black truncate" style={mFont}>
-                              {serviceLabel}
-                            </p>
+                            <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+                              <p className="text-sm font-bold text-black truncate" style={mFont}>
+                                {serviceLabel}
+                              </p>
+                              <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
+                                Créée le {formatDateTime(req.created_at)}
+                              </span>
+                            </div>
                             <p className="text-xs text-[#6B7280]" style={mFont}>
                               {serviceLabel}{eventDate ? ` · ${eventDate}` : ""}
                             </p>
@@ -308,9 +374,8 @@ export default async function ClientDashboardPage() {
               )}
             </div>
 
-            {/* Colonne droite : admin seulement */}
-            {isAdmin && (
-              <div className="flex flex-col gap-4 w-full lg:w-[340px] lg:shrink-0">
+            {/* Colonne droite : commandes récentes (tous) + widgets admin */}
+            <div className="flex flex-col gap-4 w-full lg:w-[340px] lg:shrink-0">
 
                 {/* Commandes récentes */}
                 <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
@@ -373,7 +438,7 @@ export default async function ClientDashboardPage() {
                 </div>
 
                 {/* Dépenses par service */}
-                {services.length > 0 && (
+                {isAdmin && services.length > 0 && (
                   <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                       <p
@@ -420,7 +485,7 @@ export default async function ClientDashboardPage() {
                 )}
 
                 {/* Lien Équipe si pas encore de services */}
-                {services.length === 0 && (
+                {isAdmin && services.length === 0 && (
                   <Link
                     href="/client/team"
                     className="bg-white rounded-lg p-6 flex items-center gap-4 hover:shadow-sm transition-shadow"
@@ -439,7 +504,6 @@ export default async function ClientDashboardPage() {
                 )}
 
               </div>
-            )}
           </div>
 
         </div>

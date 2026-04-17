@@ -1,51 +1,12 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, TrendingUp, FileText, CreditCard, Download, MessageSquare } from "lucide-react";
+import { TrendingUp, FileText, CreditCard, Download } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ContactCard from "@/components/ui/ContactCard";
+import { formatDateTime } from "@/lib/format";
 import type { OrderStatus } from "@/types/database";
-
-// ── Server action : ouvrir ou créer un thread de messagerie ───
-
-async function openOrCreateThread(formData: FormData) {
-  "use server";
-  const catererId      = formData.get("catererId") as string;
-  const quoteRequestId = formData.get("quoteRequestId") as string;
-  const orderId        = formData.get("orderId") as string;
-
-  const supabase = await createClient();
-
-  // Trouver l'utilisateur du traiteur
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: catererUser } = await (supabase as any)
-    .from("users")
-    .select("id")
-    .eq("caterer_id", catererId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!catererUser) redirect("/client/messages");
-
-  // Chercher un thread existant pour cette demande
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: existingMsg } = await (supabase as any)
-    .from("messages")
-    .select("thread_id")
-    .eq("quote_request_id", quoteRequestId)
-    .limit(1)
-    .maybeSingle();
-
-  if (existingMsg?.thread_id) {
-    redirect(`/client/messages?thread=${existingMsg.thread_id}`);
-  }
-
-  // Pas de thread : en créer un nouveau
-  const newThreadId = crypto.randomUUID();
-  redirect(
-    `/client/messages?thread=${newThreadId}&to=${catererUser.id}&qr=${quoteRequestId}&order=${orderId}`
-  );
-}
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -102,7 +63,7 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
       )
     `)
     .eq("id", id)
-    .eq("client_admin_id", user!.id)
+    // L'accès est géré par la RLS (créateur de la commande OU admin de la company)
     .single();
 
   if (!orderRaw) notFound();
@@ -141,6 +102,20 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
     .limit(1)
     .maybeSingle();
   const threadId: string | null = threadMsg?.thread_id ?? null;
+
+  // User du traiteur (pour permettre l'envoi direct via la modale
+  // + afficher le contact dans la carte traiteur)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: catererUserRow } = await (supabase as any)
+    .from("users")
+    .select("id, first_name, last_name, email")
+    .eq("caterer_id", caterer?.id ?? "")
+    .limit(1)
+    .maybeSingle();
+  const catererUser = catererUserRow as
+    | { id: string; first_name: string | null; last_name: string | null; email: string }
+    | null;
+  const catererUserId: string | null = catererUser?.id ?? null;
 
   // Lignes du devis groupées par section
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,6 +164,9 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
               >
                 {qr?.title ?? "Commande"}
               </h1>
+              <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
+                Créée le {formatDateTime(order.created_at)}
+              </p>
               {qr?.company_services?.name && (
                 <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
                   Service : {qr.company_services.name}
@@ -359,63 +337,27 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
             </div>
 
             {/* Colonne droite */}
-            <div className="bg-white rounded-lg p-6 flex flex-col gap-6 w-full md:w-[324px] md:shrink-0">
+            <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* Traiteur — toujours en haut */}
               {caterer && (
-                <>
-                  <div className="flex flex-col gap-3">
-                    <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                      Traiteur
-                    </p>
-                    <Link
-                      href={`/client/caterers/${caterer.id}`}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-[#F3F4F6] hover:border-[#1A3A52]/30 hover:bg-[#F5F1E8] transition-all"
-                    >
-                      {caterer.logo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={caterer.logo_url} alt="" className="h-8 w-auto object-contain shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
-                          {caterer.name?.[0] ?? "?"}
-                        </div>
-                      )}
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-bold text-black truncate" style={mFont}>{caterer.name}</span>
-                        {caterer.city && <span className="text-xs text-[#6B7280]" style={mFont}>{caterer.city}</span>}
-                      </div>
-                      <ChevronLeft size={14} className="text-[#9CA3AF] ml-auto shrink-0 rotate-180" />
-                    </Link>
-                  </div>
-                  <div className="border-t border-[#f2f2f2]" />
-                </>
+                <ContactCard
+                  entityType="caterer"
+                  entityName={caterer.name}
+                  entityLogoUrl={caterer.logo_url ?? null}
+                  contactUserId={catererUserId}
+                  contactFirstName={catererUser?.first_name ?? null}
+                  contactLastName={catererUser?.last_name ?? null}
+                  contactEmail={catererUser?.email ?? null}
+                  publicProfileHref={`/client/caterers/${caterer.id}`}
+                  myUserId={user!.id}
+                  quoteRequestId={qr?.id}
+                  orderId={order.id}
+                  messagesHref={threadId ? `/client/messages?thread=${threadId}` : "/client/messages"}
+                />
               )}
 
-              {/* Bouton conversation */}
-              {threadId ? (
-                <Link
-                  href={`/client/messages?thread=${threadId}`}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors w-full"
-                  style={mFont}
-                >
-                  <MessageSquare size={13} />
-                  Envoyer un message
-                </Link>
-              ) : (
-                <form action={openOrCreateThread}>
-                  <input type="hidden" name="catererId"      value={caterer?.id ?? ""} />
-                  <input type="hidden" name="quoteRequestId" value={qr?.id ?? ""} />
-                  <input type="hidden" name="orderId"        value={order.id} />
-                  <button
-                    type="submit"
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors w-full cursor-pointer"
-                    style={mFont}
-                  >
-                    <MessageSquare size={13} />
-                    Envoyer un message
-                  </button>
-                </form>
-              )}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
+
 
               {/* Lien demande initiale */}
               {qr?.id && (
@@ -553,6 +495,7 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
               </div>
 
 
+              </div>
             </div>
           </div>
         </div>

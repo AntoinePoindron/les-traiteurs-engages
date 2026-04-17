@@ -10,7 +10,8 @@ export type QuoteRequestStatus =
   | "approved"
   | "sent_to_caterers"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "quotes_refused";
 
 export type QuoteRequestCatererStatus =
   | "selected"
@@ -130,6 +131,7 @@ export type Company = {
   zip_code: string | null;
   oeth_eligible: boolean;
   budget_annual: number | null;
+  logo_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -173,6 +175,8 @@ export type Caterer = {
 
 export type CatererInsert = Omit<Caterer, "id" | "created_at" | "updated_at">;
 
+export type MembershipStatus = "pending" | "active" | "rejected";
+
 export type UserProfile = {
   id: string;
   email: string;
@@ -182,6 +186,7 @@ export type UserProfile = {
   company_id: string | null;
   caterer_id: string | null;
   is_active: boolean;
+  membership_status: MembershipStatus;
   created_at: string;
   updated_at: string;
 };
@@ -289,6 +294,7 @@ export type Quote = {
   notes: string | null;
   valid_until: string | null;
   status: QuoteStatus;
+  refusal_reason: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -13,9 +13,9 @@ export type ClientRequestFilter =
 
 const TABS: { value: ClientRequestFilter; label: string }[] = [
   { value: "all",      label: "Toutes" },
-  { value: "pending",  label: "Soumises" },
+  { value: "pending",  label: "En attente de devis" },
   { value: "quotes",   label: "Devis reçu(s)" },
-  { value: "accepted", label: "Devis accepté" },
+  { value: "accepted", label: "Commande créée" },
   { value: "closed",   label: "Clôturées" },
 ];
 

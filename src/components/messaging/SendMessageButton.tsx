@@ -10,6 +10,9 @@ interface SendMessageButtonProps {
   recipientUserId: string;
   recipientName: string;
   quoteRequestId: string;
+  orderId?: string;
+  /** URL de la messagerie pour le lien "Voir la conversation" après envoi (par défaut /client/messages) */
+  messagesHref?: string;
 }
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -19,6 +22,8 @@ export default function SendMessageButton({
   recipientUserId,
   recipientName,
   quoteRequestId,
+  orderId,
+  messagesHref = "/client/messages",
 }: SendMessageButtonProps) {
   const [open, setOpen]       = useState(false);
   const [body, setBody]       = useState("");
@@ -60,7 +65,7 @@ export default function SendMessageButton({
         sender_id:        myUserId,
         recipient_id:     recipientUserId,
         quote_request_id: quoteRequestId,
-        order_id:         null,
+        order_id:         orderId ?? null,
         body:             trimmed,
         is_read:          false,
       });
@@ -155,7 +160,7 @@ export default function SendMessageButton({
                     </p>
                   </div>
                   <Link
-                    href="/client/messages"
+                    href={messagesHref}
                     onClick={handleClose}
                     className="text-xs font-bold underline underline-offset-2 hover:opacity-70 transition-opacity"
                     style={{ ...mFont, color: "#1A3A52" }}

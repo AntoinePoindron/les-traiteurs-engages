@@ -263,6 +263,7 @@ export default function QuotePreviewModal({
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4"
       style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Modal */}
       <div

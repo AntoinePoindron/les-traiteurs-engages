@@ -16,7 +16,11 @@ interface ContactClientButtonProps {
   clientName: string;
   /** ID de la demande liée */
   quoteRequestId: string;
-  /** Thread existant trouvé côté serveur, null si aucun */
+  /**
+   * Thread existant trouvé côté serveur, null si aucun.
+   * Sert uniquement pour le lien "Voir la conversation →" affiché après envoi.
+   * Le bouton ouvre toujours la modale, peu importe la présence d'un thread.
+   */
   existingThreadId: string | null;
 }
 
@@ -35,25 +39,13 @@ export default function ContactClientButton({
   const [sending, setSending] = useState(false);
   const [sent, setSent]       = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const [sentThreadId, setSentThreadId] = useState<string | null>(null);
-
-  // Si un thread existe déjà : simple lien de navigation
-  if (existingThreadId) {
-    return (
-      <button
-        onClick={() => router.push(`/admin/messages?thread=${existingThreadId}`)}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold transition-colors border"
-        style={{ ...mFont, borderColor: "#1A3A52", color: "#1A3A52", backgroundColor: "transparent" }}
-      >
-        <MessageSquare size={13} />
-        Voir la conversation
-      </button>
-    );
-  }
+  const [sentThreadId, setSentThreadId] = useState<string | null>(existingThreadId);
 
   function handleClose() {
     setOpen(false);
-    setTimeout(() => { setBody(""); setSent(false); setError(null); setSentThreadId(null); }, 200);
+    // On réinitialise le brouillon mais on garde sentThreadId à la valeur initiale
+    // (existingThreadId) pour que le lien "Voir la conversation" reste valide.
+    setTimeout(() => { setBody(""); setSent(false); setError(null); setSentThreadId(existingThreadId); }, 200);
   }
 
   async function handleSend() {

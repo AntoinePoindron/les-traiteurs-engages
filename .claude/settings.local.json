@@ -57,7 +57,23 @@
       "Bash(sed -n '480,495p' src/app/\\\\\\(dashboard\\\\\\)/client/orders/\\\\[id\\\\]/page.tsx)",
       "Bash(sed -n '395,430p' src/app/\\\\\\(dashboard\\\\\\)/client/orders/\\\\[id\\\\]/page.tsx)",
       "Bash(sed -n '185,210p' src/components/admin/ContactClientButton.tsx)",
-      "Bash(sed -n '418,430p' src/components/layout/Sidebar.tsx)"
+      "Bash(sed -n '418,430p' src/components/layout/Sidebar.tsx)",
+      "Bash(rtk grep:*)",
+      "Bash(grep -n \"quote_requests.*update\\\\|update.*quote_requests\\\\|client.*quote_request\\\\|policy.*quote_request\" supabase/migrations/*.sql)",
+      "Bash(tsc --noEmit)",
+      "Bash(sed -n '283,292p' src/app/\\\\\\(dashboard\\\\\\)/caterer/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '509,518p' src/app/\\\\\\(dashboard\\\\\\)/caterer/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '446,455p' src/components/caterer/QuoteEditor.tsx)",
+      "Bash(sed -n '717,726p' src/components/caterer/QuoteEditor.tsx)",
+      "Bash(sed -n '130,155p' src/app/\\\\\\(dashboard\\\\\\)/client/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '300,360p' src/app/\\\\\\(dashboard\\\\\\)/client/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '105,140p' src/components/client/ClientRequestCard.tsx)",
+      "Bash(sed -n '100,135p' src/components/caterer/RequestCard.tsx)",
+      "Bash(sed -n '200,215p' src/app/\\\\\\(dashboard\\\\\\)/client/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '270,285p' src/app/\\\\\\(dashboard\\\\\\)/caterer/requests/\\\\[id\\\\]/page.tsx)",
+      "Bash(sed -n '165,195p' src/app/\\\\\\(dashboard\\\\\\)/admin/dashboard/page.tsx)",
+      "Bash(sed -n '95,145p' src/components/client/ClientRequestCard.tsx)",
+      "Bash(sed -n '85,140p' src/components/caterer/RequestCard.tsx)"
     ]
   }
 }

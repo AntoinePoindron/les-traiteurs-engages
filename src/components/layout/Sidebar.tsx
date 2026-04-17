@@ -54,8 +54,8 @@ const clientAdminNav: NavItem[] = [
   { label: "Facturation",     href: "/client/invoices",  icon: Receipt },
   { label: "Équipe",          href: "/client/team",      icon: Users },
   { label: "Messagerie",      href: "/client/messages",  icon: MessageSquare },
-  { label: "Mon profil",      href: "/client/profile",   icon: User },
-  { label: "Paramètres",      href: "/client/settings",  icon: Settings },
+  { label: "Mon profil",         href: "/client/profile",   icon: User },
+  { label: "Paramètres structure", href: "/client/settings",  icon: Settings },
 ];
 
 const adminNav: NavItem[] = [
@@ -86,7 +86,34 @@ const NOTIF_ICONS: Record<string, React.ElementType> = {
   quote_accepted:         CheckCircle,
   new_message:            MsgIcon,
   collaborator_pending:   Users,
+  collaborator_approved:  CheckCircle,
 };
+
+/**
+ * URL de destination au clic sur une notification, selon son type
+ * et le rôle de l'utilisateur courant. Retourne null si la notif
+ * n'est pas cliquable.
+ */
+function getNotifHref(type: string, role: UserRole): string | null {
+  switch (type) {
+    case "collaborator_pending":
+      // L'admin va valider / refuser dans Équipe → Effectifs
+      return role === "client_admin" ? "/client/team?tab=effectifs" : null;
+    case "collaborator_approved":
+      return "/client/dashboard";
+    case "quote_request_received":
+      return role === "caterer" ? "/caterer/requests" : null;
+    case "quote_accepted":
+      return role === "caterer" ? "/caterer/orders" : null;
+    case "new_message":
+      if (role === "caterer")      return "/caterer/messages";
+      if (role === "client_admin" || role === "client_user") return "/client/messages";
+      if (role === "super_admin")  return "/admin/messages";
+      return null;
+    default:
+      return null;
+  }
+}
 
 function timeAgo(date: string): string {
   const diff = Date.now() - new Date(date).getTime();
@@ -113,16 +140,19 @@ function initials(name: string): string {
 interface SidebarProps {
   role: UserRole;
   catererName?: string;
+  catererLogoUrl?: string;
   companyName?: string;
+  companyLogoUrl?: string;
   userName?: string;
 }
 
 // ── Component ──────────────────────────────────────────────────
 
-export default function Sidebar({ role, catererName, companyName, userName }: SidebarProps) {
+export default function Sidebar({ role, catererName, catererLogoUrl, companyName, companyLogoUrl, userName }: SidebarProps) {
   const pathname  = usePathname();
   const navItems  = getNav(role);
   const entityName = catererName ?? companyName ?? "";
+  const entityLogoUrl = catererName ? catererLogoUrl : companyLogoUrl;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
   // ── Notifications state
@@ -258,9 +288,15 @@ export default function Sidebar({ role, catererName, companyName, userName }: Si
 
       {/* ── Entité ── */}
       {entityName && (
-        <div className="px-5 pb-4">
+        <div className="px-5 pb-4 flex items-center gap-2">
+          {entityLogoUrl && (
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-[#F0F4F8] shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" />
+            </div>
+          )}
           <span
-            className="inline-block px-2 py-1 rounded-full text-[10px] font-bold text-[#1A3A52] truncate max-w-full"
+            className="inline-block px-2 py-1 rounded-full text-[10px] font-bold text-[#1A3A52] truncate"
             style={{ backgroundColor: "#F0F4F8", ...mFont }}
           >
             {entityName}
@@ -383,12 +419,9 @@ export default function Sidebar({ role, catererName, companyName, userName }: Si
                   ) : (
                     notifications.map((notif) => {
                       const Icon = NOTIF_ICONS[notif.type] ?? Bell;
-                      return (
-                        <div
-                          key={notif.id}
-                          className="flex gap-3 px-5 py-4 border-b border-[#F3F4F6] last:border-0"
-                          style={{ backgroundColor: notif.is_read ? "transparent" : "#F0F7FF" }}
-                        >
+                      const href = getNotifHref(notif.type, role);
+                      const inner = (
+                        <>
                           <div className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center shrink-0">
                             <Icon size={15} className="text-[#6B7280]" />
                           </div>
@@ -408,6 +441,30 @@ export default function Sidebar({ role, catererName, companyName, userName }: Si
                           {!notif.is_read && (
                             <div className="w-2 h-2 rounded-full bg-[#FF5455] shrink-0 mt-1.5" />
                           )}
+                        </>
+                      );
+                      const baseCls = "flex gap-3 px-5 py-4 border-b border-[#F3F4F6] last:border-0 transition-colors";
+                      const bg = notif.is_read ? "transparent" : "#F0F7FF";
+                      if (href) {
+                        return (
+                          <Link
+                            key={notif.id}
+                            href={href}
+                            onClick={() => setNotifOpen(false)}
+                            className={`${baseCls} hover:bg-[#F5F1E8] cursor-pointer`}
+                            style={{ backgroundColor: bg }}
+                          >
+                            {inner}
+                          </Link>
+                        );
+                      }
+                      return (
+                        <div
+                          key={notif.id}
+                          className={baseCls}
+                          style={{ backgroundColor: bg }}
+                        >
+                          {inner}
                         </div>
                       );
                     })

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag } from "lucide-react";
+import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag, Pencil } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
@@ -248,7 +248,19 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                 Créée le {formatDateTime(request.created_at)}
               </p>
             </div>
-            <StatusBadge variant={statusVariant} />
+            <div className="flex items-center gap-3 shrink-0">
+              {statusVariant === "awaiting_quotes" && visibleQuotes.length === 0 && (
+                <Link
+                  href={`/client/requests/${id}/edit`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F0F4F8] transition-colors"
+                  style={mFont}
+                >
+                  <Pencil size={12} />
+                  Modifier
+                </Link>
+              )}
+              <StatusBadge variant={statusVariant} />
+            </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-6 items-start">

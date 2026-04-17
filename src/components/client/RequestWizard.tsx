@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import BackButton from "@/components/ui/BackButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { submitQuoteRequest } from "@/app/(dashboard)/client/requests/new/actions";
+import { updateQuoteRequest } from "@/app/(dashboard)/client/requests/[id]/edit/actions";
 import type { ServiceTypeConfig } from "@/types/database";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -818,19 +819,29 @@ export default function RequestWizard({
   isCompareMode,
   companyServices = [],
   defaultCompanyServiceId = null,
+  editRequestId = null,
+  initialData = null,
 }: {
   catererData: { id: string; name: string; service_config: Record<string, ServiceTypeConfig> } | null;
   isCompareMode: boolean;
   companyServices?: { id: string; name: string }[];
   defaultCompanyServiceId?: string | null;
+  /** When set, the wizard enters edit mode and updates the existing request. */
+  editRequestId?: string | null;
+  /** Pre-filled data when editing an existing request. */
+  initialData?: WizardData | null;
 }) {
   const router = useRouter();
+  const isEditMode = editRequestId !== null;
   const [step, setStep] = useState(1);
-  const [data, setData] = useState<WizardData>({
-    ...INITIAL,
-    companyServiceId: defaultCompanyServiceId ?? "",
-  });
+  const [data, setData] = useState<WizardData>(
+    initialData ?? {
+      ...INITIAL,
+      companyServiceId: defaultCompanyServiceId ?? "",
+    }
+  );
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [quitConfirmOpen, setQuitConfirmOpen] = useState(false);
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
@@ -839,13 +850,26 @@ export default function RequestWizard({
 
   async function handleSubmit() {
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await submitQuoteRequest(data, catererData?.id ?? null, isCompareMode);
-      const params = new URLSearchParams({ mode: isCompareMode ? "compare" : "direct" });
-      if (catererData) params.set("caterer", catererData.name);
-      router.push(`/client/requests/confirmation?${params.toString()}`);
+      if (isEditMode && editRequestId) {
+        const result = await updateQuoteRequest(editRequestId, data);
+        if (!result.ok) {
+          setSubmitError(result.error);
+          setSubmitting(false);
+          return;
+        }
+        router.push(`/client/requests/${editRequestId}`);
+        router.refresh();
+      } else {
+        await submitQuoteRequest(data, catererData?.id ?? null, isCompareMode);
+        const params = new URLSearchParams({ mode: isCompareMode ? "compare" : "direct" });
+        if (catererData) params.set("caterer", catererData.name);
+        router.push(`/client/requests/confirmation?${params.toString()}`);
+      }
     } catch (e) {
       console.error(e);
+      setSubmitError(e instanceof Error ? e.message : "Erreur inconnue");
       setSubmitting(false);
     }
   }
@@ -857,6 +881,10 @@ export default function RequestWizard({
   })();
 
   function handleQuit() {
+    if (isEditMode && editRequestId) {
+      setQuitConfirmOpen(true);
+      return;
+    }
     const hasData = data.serviceType || data.eventDate || data.eventAddress || data.guestCount;
     if (hasData) {
       setQuitConfirmOpen(true);
@@ -869,7 +897,10 @@ export default function RequestWizard({
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8" }}>
       <div className="max-w-[720px] mx-auto px-4 pt-8 pb-32">
         <div className="flex flex-col gap-4">
-          <BackButton label="Quitter la demande" onClick={handleQuit} />
+          <BackButton
+            label={isEditMode ? "Annuler les modifications" : "Quitter la demande"}
+            onClick={handleQuit}
+          />
           <Stepper step={step} />
 
           {step === 1 && <Step1 data={data} update={update} catererData={catererData} />}
@@ -884,14 +915,22 @@ export default function RequestWizard({
 
       <ConfirmDialog
         open={quitConfirmOpen}
-        title="Quitter la demande ?"
-        message="Les informations saisies seront perdues. Cette action est irréversible."
-        confirmLabel="Quitter"
-        cancelLabel="Continuer la demande"
+        title={isEditMode ? "Annuler les modifications ?" : "Quitter la demande ?"}
+        message={
+          isEditMode
+            ? "Les modifications non enregistrées seront perdues."
+            : "Les informations saisies seront perdues. Cette action est irréversible."
+        }
+        confirmLabel={isEditMode ? "Annuler les modifications" : "Quitter"}
+        cancelLabel={isEditMode ? "Continuer la modification" : "Continuer la demande"}
         variant="danger"
         onConfirm={() => {
           setQuitConfirmOpen(false);
-          router.push("/client/dashboard");
+          if (isEditMode && editRequestId) {
+            router.push(`/client/requests/${editRequestId}`);
+          } else {
+            router.push("/client/dashboard");
+          }
         }}
         onClose={() => setQuitConfirmOpen(false)}
       />
@@ -924,14 +963,23 @@ export default function RequestWizard({
             Suivant
           </button>
         ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="px-8 py-2.5 rounded-full text-sm font-bold text-white transition-opacity disabled:opacity-60"
-            style={{ backgroundColor: "#1A3A52", ...mFont }}
-          >
-            {submitting ? "Envoi en cours..." : "Envoyer ma demande"}
-          </button>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="px-8 py-2.5 rounded-full text-sm font-bold text-white transition-opacity disabled:opacity-60"
+              style={{ backgroundColor: "#1A3A52", ...mFont }}
+            >
+              {submitting
+                ? (isEditMode ? "Enregistrement..." : "Envoi en cours...")
+                : (isEditMode ? "Enregistrer les modifications" : "Envoyer ma demande")}
+            </button>
+            {submitError && (
+              <p className="text-xs text-[#DC2626]" style={mFont}>
+                {submitError}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

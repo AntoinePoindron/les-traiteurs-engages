@@ -377,7 +377,16 @@ export default async function ClientDashboardPage() {
                                 {serviceLabel}{eventDate ? ` · ${eventDate}` : ""}
                               </span>
                               {!hasAccepted && (req.is_compare_mode || receivedCount > 0) && (
-                                <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: "#0284C7", ...mFont }}>
+                                <span
+                                  className="flex items-center gap-0.5 text-xs font-bold"
+                                  style={{
+                                    color:
+                                      req.is_compare_mode && receivedCount === 0
+                                        ? "#B45309"
+                                        : "#0284C7",
+                                    ...mFont,
+                                  }}
+                                >
                                   <FileText size={10} className="shrink-0" />
                                   {req.is_compare_mode
                                     ? `${receivedCount}/3 devis`

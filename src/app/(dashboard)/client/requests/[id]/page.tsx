@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag, Pencil } from "lucide-react";
+import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag, Pencil, FileText } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
@@ -453,10 +453,14 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                       </p>
                       {request.is_compare_mode && (
                         <span
-                          className="text-[11px] font-bold px-2 py-1 rounded-full"
-                          style={{ backgroundColor: "#F5F1E8", color: "#1A3A52", ...mFont }}
+                          className="flex items-center gap-0.5 text-xs font-bold shrink-0"
+                          style={{
+                            color: visibleQuotes.length === 0 ? "#B45309" : "#0284C7",
+                            ...mFont,
+                          }}
                         >
-                          {visibleQuotes.length} / 3
+                          <FileText size={10} className="shrink-0" />
+                          {visibleQuotes.length}/3 devis
                         </span>
                       )}
                     </div>

@@ -73,8 +73,9 @@ export default async function ClientDashboardPage() {
   const companyName = profile?.companies?.name;
   const companyLogoUrl = profile?.companies?.logo_url;
 
-  // ── Demandes en cours ──────────────────────────────────────
-  // Admin : toutes les demandes de la company. User : ses propres demandes.
+  // ── Build all query builders (no await yet) ──────────────────
+
+  // Demandes en cours — Admin: toutes de la company. User: ses propres.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const activeCountQuery = (supabase as any)
     .from("quote_requests")
@@ -85,11 +86,8 @@ export default async function ClientDashboardPage() {
   } else {
     activeCountQuery.eq("client_user_id", user!.id);
   }
-  const { count: activeCount } = await activeCountQuery;
 
-  // ── Commandes confirmées ───────────────────────────────────
-  // Admin : toutes les commandes de la company.
-  // User : commandes qu'il a passées lui-même.
+  // Commandes confirmées — Admin: company. User: ses commandes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ordersCountQuery = (supabase as any)
     .from("orders")
@@ -103,9 +101,8 @@ export default async function ClientDashboardPage() {
   } else {
     ordersCountQuery.eq("client_admin_id", user!.id);
   }
-  const { count: ordersCount } = await ordersCountQuery;
 
-  // ── Budget consommé (devis acceptés) ──────────────────────
+  // Budget consommé (devis acceptés)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const budgetQuery = (supabase as any)
     .from("quotes")
@@ -116,19 +113,8 @@ export default async function ClientDashboardPage() {
   } else {
     budgetQuery.eq("quote_requests.client_user_id", user!.id);
   }
-  const { data: budgetRows } = await budgetQuery;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const budgetTotal: number = (budgetRows ?? []).reduce((s: number, r: any) => s + Number(r.total_amount_ht ?? 0), 0);
-  const budgetDisplay = budgetTotal > 0
-    ? budgetTotal.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €"
-    : "0 €";
-
-  // ── Dernières demandes (hors commandes créées) ─────────────
-  // Admin : toutes les demandes de la company. User : ses propres demandes.
-  // On récupère plus de 5 lignes car on filtre ensuite côté JS celles qui
-  // ont un devis accepté (= commande créée), pour couvrir les demandes legacy
-  // dont le status n'aurait pas été passé à 'completed'.
+  // Dernières demandes (hors commandes créées). On prend 15 puis filtre à 5
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentQuery = (supabase as any)
     .from("quote_requests")
@@ -141,17 +127,8 @@ export default async function ClientDashboardPage() {
   } else {
     recentQuery.eq("client_user_id", user!.id);
   }
-  const { data: recentRaw } = await recentQuery;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recentRequests: any[] = (recentRaw ?? [])
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((req: any) => !(Array.isArray(req.quotes) && req.quotes.some((q: any) => q.status === "accepted")))
-    .slice(0, 5);
-
-  // ── Commandes récentes (admin et non-admin) ───────────────
-  // Admin : toutes les commandes de la company.
-  // User : ses propres commandes (client_admin_id = user.id).
+  // Commandes récentes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentOrdersQuery = (supabase as any)
     .from("orders")
@@ -181,7 +158,35 @@ export default async function ClientDashboardPage() {
   } else {
     recentOrdersQuery.eq("client_admin_id", user!.id);
   }
-  const { data: recentOrdersRaw } = await recentOrdersQuery;
+
+  // ── Run all 5 queries in parallel ───────────────────────────
+
+  const [
+    { count: activeCount },
+    { count: ordersCount },
+    { data: budgetRows },
+    { data: recentRaw },
+    { data: recentOrdersRaw },
+  ] = await Promise.all([
+    activeCountQuery,
+    ordersCountQuery,
+    budgetQuery,
+    recentQuery,
+    recentOrdersQuery,
+  ]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const budgetTotal: number = (budgetRows ?? []).reduce((s: number, r: any) => s + Number(r.total_amount_ht ?? 0), 0);
+  const budgetDisplay = budgetTotal > 0
+    ? budgetTotal.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + " €"
+    : "0 €";
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recentRequests: any[] = (recentRaw ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((req: any) => !(Array.isArray(req.quotes) && req.quotes.some((q: any) => q.status === "accepted")))
+    .slice(0, 5);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentOrders: any[] = recentOrdersRaw ?? [];
 
@@ -192,42 +197,51 @@ export default async function ClientDashboardPage() {
   let agefiph = 0;
 
   if (isAdmin && companyId) {
-    // Commandes actives (confirmed) — toute la company
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: activeOrders } = await (supabase as any)
-      .from("orders")
-      .select("id, quotes!inner(quote_requests!inner(company_id))", { count: "exact", head: true })
-      .eq("quotes.quote_requests.company_id", companyId)
-      .eq("status", "confirmed");
-    totalOrdersActive = activeOrders ?? 0;
+    // 4 admin queries run in parallel
+    const [
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { count: activeOrders },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { data: ageRows },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { data: servicesRaw },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { data: expOrders },
+    ] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("orders")
+        .select("id, quotes!inner(quote_requests!inner(company_id))", { count: "exact", head: true })
+        .eq("quotes.quote_requests.company_id", companyId)
+        .eq("status", "confirmed"),
 
-    // Valorisable AGEFIPH total — toute la company
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: ageRows } = await (supabase as any)
-      .from("quotes")
-      .select("valorisable_agefiph, quote_requests!inner(company_id)")
-      .eq("status", "accepted")
-      .eq("quote_requests.company_id", companyId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("quotes")
+        .select("valorisable_agefiph, quote_requests!inner(company_id)")
+        .eq("status", "accepted")
+        .eq("quote_requests.company_id", companyId),
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("company_services")
+        .select("id, name, annual_budget")
+        .eq("company_id", companyId)
+        .order("name")
+        .limit(6),
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("orders")
+        .select(`quotes!inner(total_amount_ht, quote_requests!inner(company_id, company_service_id))`)
+        .eq("quotes.quote_requests.company_id", companyId)
+        .in("status", ["confirmed", "delivered", "invoiced", "paid"]),
+    ]);
+
+    totalOrdersActive = activeOrders ?? 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     agefiph = (ageRows ?? []).reduce((s: number, r: any) => s + Number(r.valorisable_agefiph ?? 0), 0);
-
-    // Services
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: servicesRaw } = await (supabase as any)
-      .from("company_services")
-      .select("id, name, annual_budget")
-      .eq("company_id", companyId)
-      .order("name")
-      .limit(6);
     services = servicesRaw ?? [];
-
-    // Dépenses par service — toute la company
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: expOrders } = await (supabase as any)
-      .from("orders")
-      .select(`quotes!inner(total_amount_ht, quote_requests!inner(company_id, company_service_id))`)
-      .eq("quotes.quote_requests.company_id", companyId)
-      .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
     for (const o of expOrders ?? []) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sid = (o as any).quotes?.quote_requests?.company_service_id;

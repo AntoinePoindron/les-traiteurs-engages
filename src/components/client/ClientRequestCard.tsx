@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Euro, Users, MapPin, ChevronRight, FileText, ChefHat, LayoutGrid } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { formatDateTime } from "@/lib/format";
 import type { QuoteRequestStatus } from "@/types/database";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -19,8 +20,8 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
 };
 
 type ClientBadgeVariant =
-  | "submitted" | "awaiting_quotes" | "quotes_received"
-  | "quote_accepted" | "completed" | "cancelled";
+  | "awaiting_quotes" | "quotes_received"
+  | "completed" | "cancelled" | "quotes_refused";
 
 function resolveVariant(
   status: QuoteRequestStatus,
@@ -29,10 +30,10 @@ function resolveVariant(
 ): ClientBadgeVariant {
   if (status === "cancelled") return "cancelled";
   if (status === "completed") return "completed";
-  if (hasAcceptedQuote) return "quote_accepted";
+  if (status === "quotes_refused") return "quotes_refused";
+  if (hasAcceptedQuote) return "completed";
   if (quotesReceivedCount > 0) return "quotes_received";
-  if (status === "sent_to_caterers") return "awaiting_quotes";
-  return "submitted";
+  return "awaiting_quotes";
 }
 
 export interface ClientRequestCardData {
@@ -103,9 +104,14 @@ export default function ClientRequestCard({ request }: { request: ClientRequestC
       {/* Contenu */}
       <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
         <div className="flex flex-col gap-1 min-w-0">
-          <p className="text-sm font-bold text-black" style={mFont}>
-            {serviceLabel}
-          </p>
+          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+            <p className="text-sm font-bold text-black" style={mFont}>
+              {serviceLabel}
+            </p>
+            <span className="text-[10px] text-[#9CA3AF]" style={mFont}>
+              Créée le {formatDateTime(request.created_at)}
+            </span>
+          </div>
           <div className="flex items-center flex-wrap gap-x-2.5 gap-y-0.5">
             <span className="text-xs text-[#6B7280]" style={mFont}>
               {serviceLabel} · {eventDate}

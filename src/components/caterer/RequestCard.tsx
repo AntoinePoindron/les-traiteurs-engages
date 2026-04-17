@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Euro, Users, MapPin, ChevronRight, Building2 } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { formatDateTime } from "@/lib/format";
 import type { QuoteRequest } from "@/types/database";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -16,16 +17,17 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
   autre:             "Autre",
 };
 
-type StatusVariant = "new" | "pending" | "sent" | "accepted" | "refused" | "expired";
+type StatusVariant = "new" | "sent" | "completed" | "quotes_refused" | "expired";
 
 function resolveVariant(qrcStatus?: string, quoteStatus?: string | null): StatusVariant | null {
   if (!qrcStatus) return null;
   if (qrcStatus === "selected") return "new";
-  if (qrcStatus === "responded") return "pending";
+  if (qrcStatus === "responded") return "new";
   if (qrcStatus === "rejected") return "expired";
+  if (qrcStatus === "closed")   return "expired";
   if (qrcStatus === "transmitted_to_client") {
-    if (quoteStatus === "accepted") return "accepted";
-    if (quoteStatus === "refused") return "refused";
+    if (quoteStatus === "accepted") return "completed";
+    if (quoteStatus === "refused") return "quotes_refused";
     return "sent";
   }
   return null;
@@ -102,6 +104,9 @@ export default function RequestCard({ request }: RequestCardProps) {
                 {request.company_name}
               </p>
             )}
+            <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
+              Créée le {formatDateTime(request.created_at)}
+            </span>
           </div>
 
           {/* Méta inline */}

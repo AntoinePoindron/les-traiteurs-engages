@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Building2, ChevronLeft, FileText, MessageSquare } from "lucide-react";
+import { ChevronLeft, FileText } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ContactCard from "@/components/ui/ContactCard";
+import { formatDateTime } from "@/lib/format";
 import type { OrderStatus } from "@/types/database";
 
 interface PageProps {
@@ -80,9 +82,9 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
         id, reference, total_amount_ht, notes, details, caterer_id,
         quote_requests!inner (
           id, title, event_date, event_start_time, event_end_time,
-          guest_count, meal_type, description,
-          companies ( name ),
-          users ( first_name, last_name, email )
+          event_address, guest_count, meal_type, description,
+          companies ( name, logo_url ),
+          users ( id, first_name, last_name, email )
         )
       )
     `)
@@ -112,11 +114,12 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
         event_date: string;
         event_start_time: string | null;
         event_end_time: string | null;
+        event_address: string;
         guest_count: number;
         meal_type: string;
         description: string | null;
-        companies: { name: string } | null;
-        users: { first_name: string | null; last_name: string | null; email: string } | null;
+        companies: { name: string; logo_url: string | null } | null;
+        users: { id: string; first_name: string | null; last_name: string | null; email: string } | null;
       } | null;
     } | null;
   };
@@ -199,8 +202,11 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
               >
                 {qr.title}
               </h1>
+              <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
+                Créée le {formatDateTime(order.created_at)}
+              </p>
               {q.reference && (
-                <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>{q.reference}</p>
+                <p className="text-sm text-[#9CA3AF]" style={mFont}>{q.reference}</p>
               )}
             </div>
             <StatusBadge variant={order.status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"} />
@@ -296,43 +302,24 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
 
             </div>
 
-            {/* ── Colonne droite : panel action ── */}
-            <div className="bg-white rounded-lg p-6 flex flex-col gap-6 w-full md:w-[324px] md:shrink-0">
+            {/* ── Colonne droite : carte client + panel action ── */}
+            <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* Company + contact */}
-              <div className="flex flex-col gap-2">
-                <Building2 size={24} className="text-[#C4714A]" />
-                <p
-                  className="font-display font-bold text-2xl text-black"
-                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                >
-                  {qr.companies?.name ?? "—"}
-                </p>
-                {clientName && (
-                  <div
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-[#313131] w-fit"
-                    style={{ backgroundColor: "#F5F1E8", ...mFont }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    {clientName}
-                  </div>
-                )}
-              </div>
+              <ContactCard
+                entityType="client"
+                entityName={qr.companies?.name ?? null}
+                entityLogoUrl={qr.companies?.logo_url ?? null}
+                contactUserId={clientUser?.id ?? null}
+                contactFirstName={clientUser?.first_name ?? null}
+                contactLastName={clientUser?.last_name ?? null}
+                contactEmail={clientUser?.email ?? null}
+                myUserId={user!.id}
+                quoteRequestId={qr.id}
+                orderId={order.id}
+                messagesHref={threadId ? `/caterer/messages?thread=${threadId}` : "/caterer/messages"}
+              />
 
-              {/* Bouton conversation */}
-              <Link
-                href={threadId ? `/caterer/messages?thread=${threadId}` : "/caterer/messages"}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors w-full"
-                style={mFont}
-              >
-                <MessageSquare size={13} />
-                Voir la conversation
-              </Link>
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
 
               {/* Facture (si créée) — fond beige, juste sous le client */}
               {invoice && (
@@ -360,14 +347,14 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 </div>
               )}
 
-              {/* CTA avancement / création facture */}
+              {/* CTA avancement / création facture (style harmonisé avec le client) */}
               {transition ? (
                 <form action={advanceStatus}>
                   <input type="hidden" name="orderId" value={order.id} />
                   <input type="hidden" name="nextStatus" value={transition.next} />
                   <button
                     type="submit"
-                    className="w-full flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity cursor-pointer"
+                    className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity cursor-pointer"
                     style={{ ...mFont, backgroundColor: "#1A3A52" }}
                   >
                     {transition.label}
@@ -376,10 +363,10 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
               ) : order.status === "delivered" && !invoice ? (
                 <Link
                   href={`/caterer/orders/${order.id}/invoice`}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-4 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
                   style={{ ...mFont, backgroundColor: "#1A3A52" }}
                 >
-                  <FileText size={14} />
+                  <FileText size={13} />
                   Créer la facture
                 </Link>
               ) : null}
@@ -421,6 +408,7 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 </div>
               </div>
 
+              </div>
             </div>
           </div>
 

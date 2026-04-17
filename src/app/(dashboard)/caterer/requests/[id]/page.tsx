@@ -1,10 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Calendar, Euro, Building2, ChevronLeft } from "lucide-react";
+import { Calendar, Euro, ChevronLeft, ShoppingBag } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
+import ContactCard from "@/components/ui/ContactCard";
+import { formatDateTime } from "@/lib/format";
 import type {
   QuoteRequest,
   QuoteRequestCatererStatus,
@@ -36,6 +38,7 @@ function resolveStatusVariant(
   quoteStatus?: string | null
 ): StatusVariant {
   if (qrcStatus === "rejected") return "expired";
+  if (qrcStatus === "closed")   return "expired";
   if (qrcStatus === "selected") return "new";
   if (quoteStatus === "accepted") return "accepted";
   if (quoteStatus === "refused") return "refused";
@@ -106,8 +109,8 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
         drinks_included, drinks_details,
         service_waitstaff, service_equipment, service_decoration, service_other,
         description, status, created_at,
-        companies ( name ),
-        users ( first_name, last_name, email )
+        companies ( name, logo_url ),
+        users ( id, first_name, last_name, email )
       )
     `)
     .eq("quote_request_id", id)
@@ -123,8 +126,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     response_rank: number | null;
     quote_requests:
       | (QuoteRequest & {
-          companies: { name: string } | null;
+          companies: { name: string; logo_url: string | null } | null;
           users: {
+            id: string;
             first_name: string | null;
             last_name: string | null;
             email: string;
@@ -141,7 +145,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
   const { data: quoteData } = await supabase
     .from("quotes")
     .select(
-      "id, reference, total_amount_ht, amount_per_person, valorisable_agefiph, valid_until, notes, details, status, created_at"
+      "id, reference, total_amount_ht, amount_per_person, valorisable_agefiph, valid_until, notes, details, status, refusal_reason, created_at"
     )
     .eq("quote_request_id", id)
     .eq("caterer_id", catererId)
@@ -151,6 +155,18 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     .maybeSingle();
 
   const quote = quoteData as Quote | null;
+
+  // Commande liée au devis accepté
+  let linkedOrderId: string | null = null;
+  if (quote?.status === "accepted") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: orderRef } = await (supabase as any)
+      .from("orders")
+      .select("id")
+      .eq("quote_id", quote.id)
+      .maybeSingle();
+    linkedOrderId = orderRef?.id ?? null;
+  }
 
   // Fetch draft quote if any
   const { data: draftQuoteData } = await supabase
@@ -246,6 +262,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
   const showMessage = Boolean(request.description);
 
   const isNew = assignment.status === "selected";
+  const isClosed = assignment.status === "closed";
 
   return (
     <main
@@ -262,14 +279,39 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
           {/* Page title */}
           <div className="flex items-start justify-between gap-4">
-            <h1
-              className="font-display font-bold text-4xl text-black"
-              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-            >
-              {request.title}
-            </h1>
+            <div>
+              <h1
+                className="font-display font-bold text-4xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                {request.title}
+              </h1>
+              <p className="text-sm text-[#9CA3AF] mt-1" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                Créée le {formatDateTime(request.created_at)}
+              </p>
+            </div>
             <StatusBadge variant={statusVariant} />
           </div>
+
+          {isClosed && (
+            <div
+              className="rounded-lg p-4 flex items-start gap-3 border-l-4"
+              style={{ backgroundColor: "#FEF2F2", borderLeftColor: "#B91C1C" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-bold" style={{ color: "#991B1B", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                  Demande clôturée
+                </p>
+                <p className="text-xs" style={{ color: "#991B1B", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                  Le client a reçu 3 devis avant votre réponse. Vous ne pouvez plus proposer de devis sur cette demande.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Main grid */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -284,7 +326,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                 <Row
                   label="Type de prestation"
                   value={
-                    (MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type) +
+                    (MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type) +
                     (request.is_full_day && request.meal_type_secondary
                       ? ` + ${MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}`
                       : "")
@@ -372,38 +414,22 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            {/* ── Right : action panel ── */}
-            <div
-              className="bg-white rounded-lg p-6 flex flex-col gap-6 w-full md:w-[324px] md:shrink-0"
-            >
-              {/* Company + contact */}
-              <div className="flex flex-col gap-2">
-                <Building2 size={24} className="text-[#C4714A]" />
-                <p
-                  className="font-display font-bold text-2xl text-black"
-                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                >
-                  {companyName ?? "—"}
-                </p>
-                {clientName && (
-                  <div
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-[#313131] w-fit"
-                    style={{
-                      backgroundColor: "#F5F1E8",
-                      fontFamily: "Marianne, system-ui, sans-serif",
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    {clientName}
-                  </div>
-                )}
-              </div>
+            {/* ── Right : client card + action panel ── */}
+            <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
+              <ContactCard
+                entityType="client"
+                entityName={companyName ?? null}
+                entityLogoUrl={request.companies?.logo_url ?? null}
+                contactUserId={clientUser?.id ?? null}
+                contactFirstName={clientUser?.first_name ?? null}
+                contactLastName={clientUser?.last_name ?? null}
+                contactEmail={clientUser?.email ?? null}
+                myUserId={user!.id}
+                quoteRequestId={id}
+                messagesHref="/caterer/messages"
+              />
 
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
               {/* Budget */}
               <div className="flex flex-col gap-4">
                 {request.budget_global != null && (
@@ -420,14 +446,14 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                 )}
               </div>
 
-              {/* CTAs */}
+              {/* CTAs (style harmonisé avec le client) */}
               {isNew && (
                 <div className="flex flex-col gap-2">
                   {draftQuote ? (
                     <>
                       <Link
                         href={`/caterer/requests/${id}/quote/${draftQuote.id}/edit`}
-                        className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+                        className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
                         style={{
                           backgroundColor: "#1A3A52",
                           fontFamily: "Marianne, system-ui, sans-serif",
@@ -437,7 +463,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       </Link>
                       <Link
                         href={`/caterer/requests/${id}/quote/new`}
-                        className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-navy border border-[#1A3A52] hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
                         style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                       >
                         Créer un nouveau devis
@@ -446,7 +472,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   ) : (
                     <Link
                       href={`/caterer/requests/${id}/quote/new`}
-                      className="flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+                      className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
                       style={{
                         backgroundColor: "#1A3A52",
                         fontFamily: "Marianne, system-ui, sans-serif",
@@ -459,7 +485,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     <input type="hidden" name="requestId" value={id} />
                     <button
                       type="submit"
-                      className="w-full flex items-center justify-center px-6 py-4 rounded-full text-xs font-bold text-navy hover:bg-gray-50 transition-colors"
+                      className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FFF5F5] transition-colors"
                       style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                     >
                       Refuser la demande
@@ -510,12 +536,45 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   guestCount: request.guest_count,
                   eventDate: request.event_date,
                   eventAddress: request.event_address,
-                  mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type,
+                  mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type,
                 };
                 return (
                   <div className="flex flex-col gap-3">
-                    <QuoteSummary quote={quote} />
-                    <QuoteViewerButton caterer={catererInfo} data={previewData} />
+                    <QuoteSummary quote={quote}>
+                      <QuoteViewerButton caterer={catererInfo} data={previewData} />
+                    </QuoteSummary>
+
+                    {/* Motif de refus saisi par le client */}
+                    {quote.status === "refused" && quote.refusal_reason && (
+                      <div
+                        className="flex flex-col gap-2 p-3 rounded-lg border border-[#DC2626]/30"
+                        style={{ backgroundColor: "#FFF5F5" }}
+                      >
+                        <p
+                          className="text-xs font-bold text-[#DC2626]"
+                          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                        >
+                          Motif du refus
+                        </p>
+                        <p
+                          className="text-xs text-black whitespace-pre-wrap italic"
+                          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                        >
+                          {quote.refusal_reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {linkedOrderId && (
+                      <Link
+                        href={`/caterer/orders/${linkedOrderId}`}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                        style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                      >
+                        <ShoppingBag size={13} />
+                        Voir la commande
+                      </Link>
+                    )}
                   </div>
                 );
               })()}
@@ -582,6 +641,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   )}
                 </div>
               </>
+              </div>
             </div>
           </div>
         </div>
@@ -637,7 +697,7 @@ function Divider() {
   return <div className="border-t border-[#f2f2f2]" />;
 }
 
-function QuoteSummary({ quote }: { quote: Quote }) {
+function QuoteSummary({ quote, children }: { quote: Quote; children?: React.ReactNode }) {
   return (
     <div
       className="rounded-lg p-4 flex flex-col gap-3"
@@ -673,6 +733,7 @@ function QuoteSummary({ quote }: { quote: Quote }) {
           />
         )}
       </div>
+      {children}
     </div>
   );
 }

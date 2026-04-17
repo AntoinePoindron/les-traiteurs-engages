@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import UpcomingOrdersPanel from "@/components/caterer/UpcomingOrdersPanel";
+import PendingQualificationBanner from "@/components/caterer/PendingQualificationBanner";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Link from "next/link";
 import { Inbox, Clock, ShoppingBag, TrendingUp, ChevronRight, Euro, Users, MapPin, Building2 } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -27,18 +29,19 @@ export default async function CatererDashboardPage() {
 
   const { data: profileData } = await supabase
     .from("users")
-    .select("first_name, caterer_id, caterers(name, logo_url)")
+    .select("first_name, caterer_id, caterers(name, logo_url, is_validated)")
     .eq("id", user!.id)
     .single();
 
   const profile = profileData as {
     first_name: string | null;
     caterer_id: string | null;
-    caterers: { name: string; logo_url: string | null } | null;
+    caterers: { name: string; logo_url: string | null; is_validated: boolean } | null;
   } | null;
   const catererId = profile?.caterer_id;
   const catererName = profile?.caterers?.name;
   const catererLogoUrl = profile?.caterers?.logo_url;
+  const catererIsValidated = profile?.caterers?.is_validated ?? true;
 
   // ── KPIs ────────────────────────────────────────────────────
 
@@ -178,12 +181,14 @@ export default async function CatererDashboardPage() {
       <div className="pt-[54px] px-6 pb-12">
         <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
+          {!catererIsValidated && <PendingQualificationBanner />}
+
           {/* Titre */}
           <div className="flex items-center gap-4 min-w-0">
             {catererLogoUrl && (
               <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={catererLogoUrl} alt="" className="w-full h-full object-cover" />
+                <img src={catererLogoUrl} alt="" className="w-full h-full object-contain p-1" />
               </div>
             )}
             <div className="min-w-0">
@@ -274,7 +279,7 @@ export default async function CatererDashboardPage() {
                               </p>
                             )}
                             <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
-                              Créée le {new Date(req.created_at).toLocaleDateString("fr-FR")}
+                              Créée le {formatDateTime(req.created_at)}
                             </span>
                           </div>
                           {/* Infos compactes */}

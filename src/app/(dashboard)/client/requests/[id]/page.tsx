@@ -4,15 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import ContactCard from "@/components/ui/ContactCard";
+import OrderCreatedModal from "@/components/client/OrderCreatedModal";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
-import SendMessageButton from "@/components/client/SendMessageButton";
 import RefuseQuoteButton from "@/components/client/RefuseQuoteButton";
 import type { CatererInfo, PreviewData } from "@/components/caterer/QuotePreviewModal";
 import type { QuoteRequestStatus } from "@/types/database";
-import { acceptQuoteAction, refuseQuoteAction } from "./actions";
+import { formatDateTime } from "@/lib/format";
+import { acceptQuoteAction, refuseQuoteAction, cancelRequestAction } from "./actions";
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params:       Promise<{ id: string }>;
+  searchParams: Promise<{ accepted?: string }>;
 }
 
 // ── Constants ──────────────────────────────────────────────────
@@ -36,8 +39,8 @@ const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 // ── Status helpers ─────────────────────────────────────────────
 
 type ClientBadgeVariant =
-  | "submitted" | "awaiting_quotes" | "quotes_received"
-  | "quote_accepted" | "completed" | "cancelled";
+  | "awaiting_quotes" | "quotes_received"
+  | "completed" | "cancelled" | "quotes_refused";
 
 function resolveVariant(
   status: QuoteRequestStatus,
@@ -46,16 +49,17 @@ function resolveVariant(
 ): ClientBadgeVariant {
   if (status === "cancelled") return "cancelled";
   if (status === "completed" || hasAccepted) return "completed";
+  if (status === "quotes_refused") return "quotes_refused";
   if (quotesCount > 0) return "quotes_received";
-  // sent_to_caterers est une étape interne — le client voit juste "Soumise"
-  return "submitted";
+  return "awaiting_quotes";
 }
 
 
 // ── Page ───────────────────────────────────────────────────────
 
-export default async function ClientRequestDetailPage({ params }: PageProps) {
+export default async function ClientRequestDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { accepted: acceptedOrderId } = await searchParams;
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -81,7 +85,7 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
       message_to_caterer, description, is_compare_mode
     `)
     .eq("id", id)
-    .eq("client_user_id", user!.id)
+    // L'accès est géré par la RLS (déposant OU admin de la company)
     .single();
 
   if (!reqData) notFound();
@@ -89,20 +93,50 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const request = reqData as any;
 
-  // Fetch caterers linked to this request
+  // Fetch caterers linked to this request (avec le statut qrc, sert
+  // à filtrer les devis visibles ci-dessous : seuls les qrc en
+  // "transmitted_to_client" remontent un devis côté client).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: qrcData } = await (supabase as any)
     .from("quote_request_caterers")
-    .select("caterers ( id, name, city, logo_url )")
+    .select("status, caterers ( id, name, city, logo_url )")
     .eq("quote_request_id", id);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const linkedCaterers: { id: string; name: string; city: string | null; logo_url: string | null }[] =
     (qrcData ?? []).map((r: any) => r.caterers).filter(Boolean);
 
-  // Fetch transmitted quotes avec infos traiteur
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: quotesData } = await (supabase as any)
+  const transmittedCatererIds: string[] = (qrcData ?? [])
+    .filter((r: any) => r.status === "transmitted_to_client" && r.caterers)
+    .map((r: any) => r.caterers.id);
+
+  // User contact du traiteur (si un seul traiteur en demande directe).
+  // Visibilité soumise à migration 013 : uniquement si qrc.status est
+  // "transmitted_to_client" — sinon on affiche la carte sans contact.
+  let catererUser: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string;
+  } | null = null;
+  if (linkedCaterers.length === 1) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: catererUserRow } = await (supabase as any)
+      .from("users")
+      .select("id, first_name, last_name, email")
+      .eq("caterer_id", linkedCaterers[0].id)
+      .limit(1)
+      .maybeSingle();
+    catererUser = catererUserRow;
+  }
+
+  // Fetch transmitted quotes avec infos traiteur. En mode comparer-3,
+  // on filtre sur les caterers dont le qrc est "transmitted_to_client"
+  // (seuls les 3 premiers répondants). En mode direct, on garde tous
+  // les devis sent/accepted/refused du traiteur désigné.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let quotesQuery: any = (supabase as any)
     .from("quotes")
     .select(`
       id, reference, total_amount_ht, amount_per_person,
@@ -113,23 +147,24 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
     .in("status", ["sent", "accepted", "refused"])
     .order("created_at", { ascending: false });
 
+  if (request.is_compare_mode) {
+    if (transmittedCatererIds.length === 0) {
+      quotesQuery = quotesQuery.eq("caterer_id", "00000000-0000-0000-0000-000000000000");
+    } else {
+      quotesQuery = quotesQuery.in("caterer_id", transmittedCatererIds);
+    }
+  }
+
+  const { data: quotesData } = await quotesQuery;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const quotes: any[] = quotesData ?? [];
-  const visibleQuotes = quotes.filter((q: any) => q.status !== "refused" || q.status === "accepted");
-
-  // Récupérer les user IDs des traiteurs (pour la messagerie)
-  const catererIds = [...new Set(quotes.map((q: any) => q.caterers?.id).filter(Boolean))];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: catererUsersData } = catererIds.length > 0
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? await (supabase as any).from("users").select("id, caterer_id").in("caterer_id", catererIds)
-    : { data: [] };
-  const catererUserMap: Record<string, string> = Object.fromEntries(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (catererUsersData ?? []).map((u: any) => [u.caterer_id, u.id])
-  );
+  // On affiche TOUS les devis reçus (sent/accepted/refused). Les refusés
+  // conservent leur place dans la liste pour garder le compteur X/3
+  // cohérent côté client et montrer son choix.
+  const visibleQuotes = quotes;
   const acceptedQuote = quotes.find((q: any) => q.status === "accepted") ?? null;
-  const quotesCount = quotes.filter((q: any) => q.status === "sent" || q.status === "accepted").length;
+  const hasPendingQuote = quotes.some((q: any) => q.status === "sent");
 
   // Commande associée (si devis accepté)
   let linkedOrderId: string | null = null;
@@ -145,7 +180,7 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
 
   const statusVariant = resolveVariant(
     request.status as QuoteRequestStatus,
-    quotesCount,
+    visibleQuotes.length,
     !!acceptedQuote
   );
 
@@ -192,6 +227,8 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
   if (request.dietary_bio) dietItems.push({ label: "Produits bio" });
 
   return (
+    <>
+    {acceptedOrderId && <OrderCreatedModal orderId={acceptedOrderId} />}
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
       <div className="pt-[54px] px-6 pb-12">
         <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
@@ -200,12 +237,17 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
           <BackButton label="Retour" />
 
           <div className="flex items-start justify-between gap-4">
-            <h1
-              className="font-display font-bold text-4xl text-black"
-              style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-            >
-              {request.title}
-            </h1>
+            <div>
+              <h1
+                className="font-display font-bold text-4xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                {request.title}
+              </h1>
+              <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
+                Créée le {formatDateTime(request.created_at)}
+              </p>
+            </div>
             <StatusBadge variant={statusVariant} />
           </div>
 
@@ -301,50 +343,67 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
             </div>
 
             {/* ── Right : traiteur + statut + devis ── */}
-            <div className="bg-white rounded-lg p-6 flex flex-col gap-5 w-full md:w-[324px] md:shrink-0">
+            <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* 1 — Traiteur contacté (demande directe) — toujours en haut */}
-              {!request.is_compare_mode && linkedCaterers.length > 0 && (
-                <>
-                  <div className="flex flex-col gap-3">
-                    <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                      Traiteur contacté
-                    </p>
-                    {linkedCaterers.map((cat) => (
-                      <Link
-                        key={cat.id}
-                        href={`/client/caterers/${cat.id}`}
-                        className="flex items-center gap-3 p-3 rounded-lg border border-[#F3F4F6] hover:border-[#1A3A52]/30 hover:bg-[#F5F1E8] transition-all"
-                      >
-                        {cat.logo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={cat.logo_url} alt="" className="h-8 w-auto object-contain shrink-0" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
-                            {cat.name[0]}
-                          </div>
-                        )}
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-bold text-black truncate" style={mFont}>{cat.name}</span>
-                          {cat.city && <span className="text-xs text-[#6B7280]" style={mFont}>{cat.city}</span>}
-                        </div>
-                        <ChevronLeft size={14} className="text-[#9CA3AF] ml-auto shrink-0 rotate-180" />
-                      </Link>
-                    ))}
-                  </div>
-                  <Divider />
-                </>
+              {/* 1 — Traiteur contacté (demande directe) — carte complète */}
+              {!request.is_compare_mode && linkedCaterers.length === 1 && (
+                <ContactCard
+                  entityType="caterer"
+                  entityName={linkedCaterers[0].name}
+                  entityLogoUrl={linkedCaterers[0].logo_url}
+                  contactUserId={catererUser?.id ?? null}
+                  contactFirstName={catererUser?.first_name ?? null}
+                  contactLastName={catererUser?.last_name ?? null}
+                  contactEmail={catererUser?.email ?? null}
+                  publicProfileHref={`/client/caterers/${linkedCaterers[0].id}`}
+                  myUserId={user!.id}
+                  quoteRequestId={id}
+                  messagesHref="/client/messages"
+                />
               )}
+
+              {/* Fallback : plusieurs traiteurs liés (cas rare hors compare mode) */}
+              {!request.is_compare_mode && linkedCaterers.length > 1 && (
+                <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+                  <p className="font-display font-bold text-lg text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Traiteurs contactés
+                  </p>
+                  {linkedCaterers.map((cat) => (
+                    <Link
+                      key={cat.id}
+                      href={`/client/caterers/${cat.id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-[#F3F4F6] hover:border-[#1A3A52]/30 hover:bg-[#F5F1E8] transition-all"
+                    >
+                      {cat.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={cat.logo_url} alt="" className="h-8 w-auto object-contain shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
+                          {cat.name[0]}
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-bold text-black truncate" style={mFont}>{cat.name}</span>
+                        {cat.city && <span className="text-xs text-[#6B7280]" style={mFont}>{cat.city}</span>}
+                      </div>
+                      <ChevronLeft size={14} className="text-[#9CA3AF] ml-auto shrink-0 rotate-180" />
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
+
 
               {/* 2 — Commande associée (devis accepté) */}
               {linkedOrderId && (
                 <>
                   <Link
                     href={`/client/orders/${linkedOrderId}`}
-                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-bold text-white hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: "#1A3A52", fontFamily: "Marianne, system-ui, sans-serif" }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                    style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                   >
-                    <ShoppingBag size={15} />
+                    <ShoppingBag size={13} />
                     Voir la commande
                   </Link>
                   <Divider />
@@ -352,7 +411,7 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
               )}
 
               {/* 3 — Demande en cours d'examen (état soumise, pas encore de devis) */}
-              {visibleQuotes.length === 0 && statusVariant === "submitted" && (
+              {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && (
                 <>
                   <div className="flex flex-col gap-2 py-2 items-center text-center">
                     <Clock size={28} className="text-[#D1D5DB]" />
@@ -366,12 +425,27 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
               )}
 
               {/* 4 — Devis reçus */}
-              {visibleQuotes.length > 0 && (
+              {(visibleQuotes.length > 0 || request.is_compare_mode) && (
                 <>
                   <div className="flex flex-col gap-4">
-                    <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                      Devis reçus
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                        Devis reçus
+                      </p>
+                      {request.is_compare_mode && (
+                        <span
+                          className="text-[11px] font-bold px-2 py-1 rounded-full"
+                          style={{ backgroundColor: "#F5F1E8", color: "#1A3A52", ...mFont }}
+                        >
+                          {visibleQuotes.length} / 3
+                        </span>
+                      )}
+                    </div>
+                    {visibleQuotes.length === 0 && request.is_compare_mode && (
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        En attente des 3 premiers devis. Vous serez notifié au fur et à mesure.
+                      </p>
+                    )}
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {visibleQuotes.map((quote: any) => (
                       <QuoteCard
@@ -383,11 +457,22 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
                         guestCount={request.guest_count}
                         mealTypeLabel={serviceLabel}
                         isAccepted={quote.status === "accepted"}
+                        isRefused={quote.status === "refused"}
                         canAccept={!acceptedQuote && quote.status === "sent"}
-                        myUserId={user!.id}
-                        recipientUserId={catererUserMap[quote.caterers?.id] ?? null}
                       />
                     ))}
+                    {hasPendingQuote && !acceptedQuote && request.status !== "cancelled" && request.status !== "completed" && (
+                      <form action={cancelRequestAction}>
+                        <input type="hidden" name="request_id" value={id} />
+                        <button
+                          type="submit"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FFF5F5] transition-colors"
+                          style={mFont}
+                        >
+                          Ne retenir aucun devis
+                        </button>
+                      </form>
+                    )}
                   </div>
                   <Divider />
                 </>
@@ -420,11 +505,13 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
                   )}
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>
       </div>
     </main>
+    </>
   );
 }
 
@@ -432,7 +519,7 @@ export default async function ClientRequestDetailPage({ params }: PageProps) {
 
 function QuoteCard({
   quote, requestId, eventDate, eventAddress, guestCount, mealTypeLabel,
-  isAccepted, canAccept, myUserId, recipientUserId,
+  isAccepted, isRefused, canAccept,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   quote: any;
@@ -442,9 +529,8 @@ function QuoteCard({
   guestCount: number;
   mealTypeLabel: string;
   isAccepted: boolean;
+  isRefused: boolean;
   canAccept: boolean;
-  myUserId: string;
-  recipientUserId: string | null;
 }) {
   const caterer = quote.caterers;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -496,15 +582,25 @@ function QuoteCard({
     <div
       className="rounded-lg p-4 flex flex-col gap-3"
       style={{
-        backgroundColor: isAccepted ? "#DCFCE7" : "#F5F1E8",
-        border: isAccepted ? "1px solid #16A34A40" : "none",
+        backgroundColor: isAccepted ? "#DCFCE7" : isRefused ? "#F9FAFB" : "#F5F1E8",
+        border: isAccepted
+          ? "1px solid #16A34A40"
+          : isRefused
+            ? "1px solid #E5E7EB"
+            : "none",
+        opacity: isRefused ? 0.75 : 1,
       }}
     >
       {/* Traiteur */}
       <div className="flex items-center gap-2">
         {caterer?.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={caterer.logo_url} alt="" className="h-6 w-auto object-contain" />
+          <img
+            src={caterer.logo_url}
+            alt=""
+            className="h-6 w-auto object-contain"
+            style={{ filter: isRefused ? "grayscale(1)" : undefined }}
+          />
         ) : (
           <div className="w-6 h-6 rounded-full bg-[#1A3A52]/10 flex items-center justify-center shrink-0">
             <span className="text-[8px] font-bold text-[#1A3A52]" style={mFont}>
@@ -512,11 +608,17 @@ function QuoteCard({
             </span>
           </div>
         )}
-        <p className="text-xs font-bold text-black truncate" style={mFont}>
+        <p
+          className="text-xs font-bold truncate"
+          style={{ ...mFont, color: isRefused ? "#6B7280" : "#000", textDecoration: isRefused ? "line-through" : undefined }}
+        >
           {caterer?.name ?? "Traiteur"}
         </p>
         {isAccepted && (
           <span className="ml-auto text-[10px] font-bold text-[#16A34A]" style={mFont}>Accepté</span>
+        )}
+        {isRefused && (
+          <span className="ml-auto text-[10px] font-bold text-[#DC2626]" style={mFont}>Refusé</span>
         )}
       </div>
 
@@ -554,6 +656,13 @@ function QuoteCard({
         )}
       </div>
 
+      {/* Motif du refus (si saisi) */}
+      {isRefused && quote.refusal_reason && (
+        <div className="text-xs italic text-[#6B7280] rounded-md px-3 py-2" style={{ ...mFont, backgroundColor: "#fff" }}>
+          &ldquo;{quote.refusal_reason}&rdquo;
+        </div>
+      )}
+
       {/* Voir le devis */}
       {items.length > 0 && (
         <QuoteViewerButton caterer={catererInfo} data={previewData} />
@@ -586,16 +695,6 @@ function QuoteCard({
             quoteId={quote.id}
             requestId={requestId}
           />
-
-          {/* Envoyer un message */}
-          {recipientUserId && (
-            <SendMessageButton
-              myUserId={myUserId}
-              recipientUserId={recipientUserId}
-              recipientName={caterer?.name ?? "le traiteur"}
-              quoteRequestId={requestId}
-            />
-          )}
         </>
       )}
     </div>

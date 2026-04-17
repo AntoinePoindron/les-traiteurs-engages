@@ -87,7 +87,7 @@ export default async function ClientSettingsPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-[#F5F1E8]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={company.logo_url} alt="Logo de la structure" className="w-full h-full object-cover" />
+                      <img src={company.logo_url} alt="Logo de la structure" className="w-full h-full object-contain p-1" />
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <p className="text-[11px] text-[#9CA3AF]" style={mFont}>Logo</p>

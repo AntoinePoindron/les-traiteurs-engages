@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Check, ChevronLeft } from "lucide-react";
+import { Plus, Trash2, Check } from "lucide-react";
 import { saveQuote } from "@/app/(dashboard)/caterer/requests/[id]/quote/new/actions";
 import type { QuoteRequest } from "@/types/database";
 import QuotePreviewModal from "@/components/caterer/QuotePreviewModal";
 import type { CatererInfo } from "@/components/caterer/QuotePreviewModal";
+import BackButton from "@/components/ui/BackButton";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -447,7 +448,7 @@ function SummaryCard({ request }: { request: QuoteRequest }) {
       <div className="flex flex-col gap-2">
         <SummaryRow
           label="Type"
-          value={MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type}
+          value={MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type}
         />
         <SummaryRow label="Date" value={formatDate(request.event_date)} />
         {(request.event_start_time || request.event_end_time) && (
@@ -718,7 +719,7 @@ export default function QuoteEditor({
     guestCount: request.guest_count,
     eventDate: request.event_date,
     eventAddress: request.event_address,
-    mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type] ?? request.meal_type,
+    mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type,
   };
 
   return (
@@ -738,15 +739,9 @@ export default function QuoteEditor({
       >
       <div className="pt-[54px] px-6 pb-8">
         <div className="mx-auto" style={{ maxWidth: "1020px" }}>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="inline-flex items-center gap-1 text-xs font-bold text-navy mb-4 hover:opacity-70 transition-opacity"
-            style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-          >
-            <ChevronLeft size={16} />
-            Retour à la demande
-          </button>
+          <div className="mb-4">
+            <BackButton label="Retour à la demande" />
+          </div>
 
           <h1
             className="font-display font-bold text-4xl mb-6 text-black"

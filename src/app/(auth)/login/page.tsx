@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ChefHat, Eye, EyeOff, Loader2 } from "lucide-react";
-import type { UserRole } from "@/types/database";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import type { UserRole, MembershipStatus } from "@/types/database";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,12 +41,34 @@ export default function LoginPage() {
     if (user) {
       const { data: profileData } = await supabase
         .from("users")
-        .select("role")
+        .select("role, membership_status")
         .eq("id", user.id)
         .single();
 
-      const role = (profileData as { role: UserRole } | null)?.role;
-      router.push(getDashboardPath(role));
+      const profile = profileData as {
+        role: UserRole;
+        membership_status: MembershipStatus | null;
+      } | null;
+
+      // Bloquer l'accès si l'adhésion n'est pas validée
+      if (profile?.membership_status === "pending") {
+        await supabase.auth.signOut();
+        setError(
+          "Votre adhésion est en attente de validation par l'administrateur de votre structure."
+        );
+        setLoading(false);
+        return;
+      }
+      if (profile?.membership_status === "rejected") {
+        await supabase.auth.signOut();
+        setError(
+          "Votre demande d'adhésion a été refusée. Contactez l'administrateur de votre structure."
+        );
+        setLoading(false);
+        return;
+      }
+
+      router.push(getDashboardPath(profile?.role));
       router.refresh();
     }
   }
@@ -139,7 +162,14 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-medium mt-6">
+        <p className="text-center text-sm text-gray-medium mt-6">
+          Pas encore de compte ?{" "}
+          <Link href="/signup" className="text-terracotta hover:underline font-medium">
+            Créer un compte
+          </Link>
+        </p>
+
+        <p className="text-center text-xs text-gray-medium mt-3">
           Problème de connexion ? Contactez{" "}
           <a
             href="mailto:support@lestraiteursenggages.fr"

@@ -7,6 +7,7 @@ import {
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import NewRequestDropdown from "@/components/client/NewRequestDropdown";
+import { formatDateTime } from "@/lib/format";
 import type { QuoteRequestStatus, OrderStatus, UserRole } from "@/types/database";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -247,7 +248,7 @@ export default async function ClientDashboardPage() {
               {companyLogoUrl && (
                 <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={companyLogoUrl} alt="" className="w-full h-full object-cover" />
+                  <img src={companyLogoUrl} alt="" className="w-full h-full object-contain p-1" />
                 </div>
               )}
               <div className="min-w-0">
@@ -354,7 +355,7 @@ export default async function ClientDashboardPage() {
                                 {serviceLabel}
                               </p>
                               <span className="text-[10px] text-[#9CA3AF] shrink-0" style={mFont}>
-                                Créée le {new Date(req.created_at).toLocaleDateString("fr-FR")}
+                                Créée le {formatDateTime(req.created_at)}
                               </span>
                             </div>
                             <p className="text-xs text-[#6B7280]" style={mFont}>

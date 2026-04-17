@@ -72,19 +72,13 @@ export default async function CatererDetailPage({
     caterer.address || caterer.city || caterer.delivery_radius_km || minCapacity;
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8" }}>
-      {/* ── Header ── */}
-      <div
-        className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b border-[#E5E7EB]"
-        style={{ backgroundColor: "rgba(255,255,255,0.97)", backdropFilter: "blur(4px)" }}
-      >
-        <BackButton />
-      </div>
+    <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
+      <div className="pt-[54px] px-6 pb-12">
+        <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
 
-      {/* ── Content ── */}
-      <div className="px-6 pb-10 pt-6 flex flex-col gap-6" style={{ maxWidth: 1020, margin: "0 auto" }}>
+          <BackButton />
 
-        {/* ── Hero : photos + carte info ── */}
+          {/* ── Hero : photos + carte info ── */}
         <div className="flex flex-col md:flex-row gap-5 items-start">
 
           {/* Photos */}
@@ -323,7 +317,8 @@ export default async function CatererDetailPage({
           </div>
         </div>
 
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

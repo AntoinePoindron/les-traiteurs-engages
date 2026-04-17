@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { geocodeAddress } from "@/lib/geocoding";
 import type { WizardData } from "@/components/client/RequestWizard";
 
 // Maps wizard service type keys to the legacy meal_type enum
@@ -56,6 +57,8 @@ export async function submitQuoteRequest(
       title,
       client_user_id:   user.id,
       company_id:       profile.company_id,
+      // Service interne de l'entreprise (pour le suivi des dépenses)
+      company_service_id: data.companyServiceId || null,
       // Event
       event_date:       data.eventDate,
       event_start_time: data.eventStartTime || null,
@@ -118,10 +121,24 @@ export async function submitQuoteRequest(
   const err = error as { message: string } | null;
   if (err) throw new Error(err.message);
 
+  const requestId = (inserted as { id: string }).id;
+
+  // Géocoder l'adresse de l'événement (Nominatim, non bloquant). Sert
+  // au matching par rayon de livraison en mode comparer-3.
+  const coords = await geocodeAddress({ address: data.eventAddress });
+  if (coords) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
+      .from("quote_requests")
+      .update({
+        event_latitude:  coords.lat,
+        event_longitude: coords.lng,
+      })
+      .eq("id", requestId);
+  }
+
   // Si un traiteur spécifique a été ciblé, l'associer à la demande
   if (catererIdParam && !isCompareMode) {
-    const requestId = (inserted as { id: string }).id;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: qrcError } = await (supabase as any).from("quote_request_caterers").insert({
       quote_request_id: requestId,
@@ -139,5 +156,5 @@ export async function submitQuoteRequest(
       .eq("id", requestId);
   }
 
-  return { id: (inserted as { id: string }).id };
+  return { id: requestId };
 }

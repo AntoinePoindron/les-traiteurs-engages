@@ -43,8 +43,30 @@ export async function saveQuote(
   const catererId = (profile as any)?.caterer_id as string | null;
   if (!catererId) return { error: "Traiteur introuvable" };
 
-  // Guard : empêcher l'envoi si la demande a déjà un devis accepté ou une commande
+  // Récupérer l'état du qrc pour ce traiteur sur cette demande.
+  // Contrôle à la fois l'acceptation d'un devis déjà accepté et le
+  // verrouillage en mode comparer-3 (qrc.status = 'closed' quand
+  // 3 devis ont déjà été transmis au client).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: qrcRow } = await (supabase as any)
+    .from("quote_request_caterers")
+    .select("status")
+    .eq("quote_request_id", payload.quote_request_id)
+    .eq("caterer_id", catererId)
+    .maybeSingle();
+  const qrcStatus: string | null = qrcRow?.status ?? null;
+
   if (send) {
+    if (qrcStatus === "closed") {
+      return {
+        error:
+          "La limite de 3 devis a déjà été atteinte pour cette demande — vous ne pouvez plus y répondre.",
+      };
+    }
+    if (qrcStatus === "rejected") {
+      return { error: "Vous avez refusé cette demande, l'envoi d'un devis n'est plus possible." };
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: acceptedQuote } = await (supabase as any)
       .from("quotes")
@@ -102,15 +124,26 @@ export async function saveQuote(
   if (error) return { error: error.message };
 
   if (send) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
-      .from("quote_request_caterers")
-      .update({
-        status: "transmitted_to_client",
-        responded_at: new Date().toISOString(),
-      })
-      .eq("caterer_id", catererId)
-      .eq("quote_request_id", payload.quote_request_id);
+    // On ne passe le qrc en "responded" que s'il est encore en
+    // "selected". Le trigger SQL `apply_three_responders_rule` promeut
+    // ensuite les 3 premiers à "transmitted_to_client" (visible côté
+    // client) et le trigger `qrc_lock_out_trigger` verrouille les
+    // autres `selected` dès qu'un 3ème passe en `transmitted_to_client`.
+    // Si le qrc est déjà en `responded` ou `transmitted_to_client`
+    // (ré-envoi d'un devis corrigé), on ne touche pas au statut.
+    if (qrcStatus === "selected") {
+      // IMPORTANT : on ne set PAS `responded_at` ici. La trigger SQL
+      // `apply_three_responders_rule` (migration 001) ne calcule le
+      // rang et ne promeut en `transmitted_to_client` que si
+      // `NEW.responded_at is null`. Si on le pré-remplit, la trigger
+      // skip et les devis ne sont jamais remontés au client.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("quote_request_caterers")
+        .update({ status: "responded" })
+        .eq("caterer_id", catererId)
+        .eq("quote_request_id", payload.quote_request_id);
+    }
 
     revalidatePath(`/caterer/requests/${payload.quote_request_id}`);
     revalidatePath("/caterer/requests");

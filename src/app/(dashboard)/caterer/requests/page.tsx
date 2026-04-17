@@ -62,10 +62,7 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
   // Filtrage par statut QRC
   switch (activeFilter) {
     case "new":
-      query = query.eq("status", "selected");
-      break;
-    case "pending":
-      query = query.eq("status", "responded");
+      query = query.in("status", ["selected", "responded"]);
       break;
     case "sent":
       query = query.eq("status", "transmitted_to_client");
@@ -76,7 +73,7 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
       }
       break;
     case "archived":
-      query = query.eq("status", "rejected");
+      query = query.in("status", ["rejected", "closed"]);
       break;
     case "accepted":
     case "refused":

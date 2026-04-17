@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import ProfileForm from "@/components/caterer/ProfileForm";
+import PendingQualificationBanner from "@/components/caterer/PendingQualificationBanner";
 import type { Caterer } from "@/types/database";
 
 export default async function CatererProfilePage() {
@@ -31,7 +32,8 @@ export default async function CatererProfilePage() {
       style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}
     >
       <div className="pt-[54px] px-6 pb-12">
-        <div className="mx-auto" style={{ maxWidth: "1020px" }}>
+        <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "1020px" }}>
+          {caterer && !caterer.is_validated && <PendingQualificationBanner />}
           {caterer ? (
             <ProfileForm caterer={caterer} catererId={catererId!} />
           ) : (

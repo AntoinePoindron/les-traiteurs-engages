@@ -373,7 +373,7 @@ export default function ProfileForm({ caterer, catererId }: ProfileFormProps) {
                 >
                   {logoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                    <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
                   ) : (
                     <Upload size={20} className="text-[#9CA3AF]" />
                   )}

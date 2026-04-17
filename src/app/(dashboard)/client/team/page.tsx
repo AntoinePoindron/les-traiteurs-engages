@@ -1,17 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import {
-  Building2, Users, Euro, Plus, Pencil, Trash2,
-  BarChart3, UserPlus,
+  Building2, Users, Euro, Plus, Trash2,
+  BarChart3,
 } from "lucide-react";
 import type { CompanyService, CompanyEmployee } from "@/types/database";
 import {
   createServiceAction,
   deleteServiceAction,
   createEmployeeAction,
-  updateEmployeeServiceAction,
+  updateEmployeeAction,
   deleteEmployeeAction,
+  approveMembershipAction,
+  rejectMembershipAction,
 } from "./actions";
+import EmployeeModal from "@/components/client/EmployeeModal";
+import CopyInviteLinkButton from "@/components/client/CopyInviteLinkButton";
+import { CheckCircle, XCircle } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -24,13 +29,15 @@ interface PageProps {
     tab?: string;
     action?: string;
     service?: string;
+    edit?: string;
+    error?: string;
   }>;
 }
 
 // ── Page ───────────────────────────────────────────────────────
 
 export default async function ClientTeamPage({ searchParams }: PageProps) {
-  const { tab, action } = await searchParams;
+  const { tab, action, edit: editEmployeeId, error: pageError } = await searchParams;
   const activeTab: Tab = (tab as Tab) || "services";
 
   const supabase = await createClient();
@@ -54,14 +61,35 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: employeesRaw } = await (supabase as any)
     .from("company_employees")
-    .select("id, first_name, last_name, email, position, service_id, created_at")
+    .select("id, first_name, last_name, email, position, service_id, created_at, invited_at, user_id")
     .eq("company_id", companyId ?? "")
     .order("last_name");
 
-  const employees: CompanyEmployee[] = employeesRaw ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const employees: (CompanyEmployee & { invited_at: string | null; user_id: string | null })[] =
+    employeesRaw ?? [];
+
+  // ── Fetch demandes d'adhésion en attente ────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: pendingMembersRaw } = await (supabase as any)
+    .from("users")
+    .select("id, first_name, last_name, email, created_at")
+    .eq("company_id", companyId ?? "")
+    .eq("membership_status", "pending")
+    .order("created_at", { ascending: false });
+
+  const pendingMembers: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string;
+    created_at: string;
+  }[] = pendingMembersRaw ?? [];
 
   // ── Fetch dépenses par service ───────────────────────────────
   // orders → quotes → quote_requests.company_service_id → company_services
+  // On récupère TOUTES les commandes de la company (peu importe quel
+  // membre les a passées), pas seulement celles de l'admin connecté.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: ordersForExpenses } = await (supabase as any)
     .from("orders")
@@ -69,11 +97,12 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
       quotes!inner (
         total_amount_ht,
         quote_requests!inner (
+          company_id,
           company_service_id
         )
       )
     `)
-    .eq("client_admin_id", user!.id)
+    .eq("quotes.quote_requests.company_id", companyId ?? "")
     .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
 
   // Agrégation des dépenses par service
@@ -310,95 +339,107 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
           {activeTab === "effectifs" && (
             <div className="flex flex-col gap-4">
 
-              {/* Formulaire d'ajout */}
-              {action === "add-employee" ? (
-                <div className="bg-white rounded-lg p-6">
-                  <p className="font-display font-bold text-xl text-black mb-4" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Ajouter un collaborateur
+              {/* Bandeau d'erreur (échec d'invitation) */}
+              {pageError === "email_exists" && (
+                <div
+                  className="bg-white rounded-lg px-4 py-3 border-l-4"
+                  style={{ borderLeftColor: "#DC2626" }}
+                >
+                  <p className="text-xs font-bold text-[#DC2626]" style={mFont}>
+                    Cet email est déjà associé à un compte existant — invitation impossible.
                   </p>
-                  <form action={createEmployeeAction} className="flex flex-col gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-black" style={mFont}>Prénom *</label>
-                        <input
-                          name="first_name" required
-                          placeholder="Prénom"
-                          className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                          style={mFont}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-black" style={mFont}>Nom *</label>
-                        <input
-                          name="last_name" required
-                          placeholder="Nom de famille"
-                          className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                          style={mFont}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Email</label>
-                      <input
-                        name="email" type="email"
-                        placeholder="email@entreprise.fr"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Poste</label>
-                      <input
-                        name="position"
-                        placeholder="Ex. : Responsable, Chargé de mission…"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Service</label>
-                      <select
-                        name="service_id"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black bg-white focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      >
-                        <option value="">— Aucun service —</option>
-                        {services.map((s) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                      <Link
-                        href="/client/team?tab=effectifs"
-                        className="flex-1 flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
-                        style={mFont}
-                      >
-                        Annuler
-                      </Link>
-                      <button
-                        type="submit"
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
-                        style={{ backgroundColor: "#1A3A52", ...mFont }}
-                      >
-                        <UserPlus size={13} />
-                        Ajouter
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              ) : (
-                <div className="flex justify-end">
-                  <Link
-                    href="/client/team?tab=effectifs&action=add-employee"
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: "#1A3A52", ...mFont }}
-                  >
-                    <UserPlus size={14} />
-                    Ajouter un collaborateur
-                  </Link>
                 </div>
               )}
+
+              {/* Bandeau demandes d'adhésion en attente (compact) */}
+              {pendingMembers.length > 0 && (
+                <div
+                  className="bg-white rounded-lg px-4 py-3 flex flex-col gap-1.5 border-l-4"
+                  style={{ borderLeftColor: "#F59E0B" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-black" style={mFont}>
+                      Demandes d&apos;adhésion
+                    </p>
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: "#FEF3C7", color: "#B45309", ...mFont }}
+                    >
+                      {pendingMembers.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col divide-y divide-[#F3F4F6]">
+                    {pendingMembers.map((member) => {
+                      const fullName = [member.first_name, member.last_name]
+                        .filter(Boolean)
+                        .join(" ") || member.email;
+                      const initials =
+                        ((member.first_name?.[0] ?? "") + (member.last_name?.[0] ?? "")).toUpperCase() ||
+                        member.email[0].toUpperCase();
+                      const askedAt = new Date(member.created_at).toLocaleDateString("fr-FR", {
+                        day: "numeric", month: "short",
+                      });
+                      return (
+                        <div key={member.id} className="py-2 flex items-center gap-3">
+                          {/* Avatar */}
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                            style={{ backgroundColor: "#F59E0B", ...mFont }}
+                          >
+                            {initials}
+                          </div>
+
+                          {/* Infos sur une ligne */}
+                          <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-black truncate" style={mFont}>
+                              {fullName}
+                            </span>
+                            <span className="text-[11px] text-[#9CA3AF] truncate" style={mFont}>
+                              {member.email} · {askedAt}
+                            </span>
+                          </div>
+
+                          {/* Actions */}
+                          <form action={approveMembershipAction} className="shrink-0">
+                            <input type="hidden" name="user_id" value={member.id} />
+                            <button
+                              type="submit"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-white hover:opacity-90 transition-opacity"
+                              style={{ backgroundColor: "#16A34A", ...mFont }}
+                              title="Valider l'adhésion"
+                            >
+                              <CheckCircle size={11} />
+                              Valider
+                            </button>
+                          </form>
+                          <form action={rejectMembershipAction} className="shrink-0">
+                            <input type="hidden" name="user_id" value={member.id} />
+                            <button
+                              type="submit"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                              style={mFont}
+                              title="Refuser l'adhésion"
+                            >
+                              <XCircle size={11} />
+                              Refuser
+                            </button>
+                          </form>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Bouton "Ajouter" → ouvre la modale */}
+              <div className="flex justify-end">
+                <EmployeeModal
+                  mode="add"
+                  services={services.map((s) => ({ id: s.id, name: s.name }))}
+                  action={createEmployeeAction}
+                />
+              </div>
 
               {/* Liste des effectifs groupés par service */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
@@ -409,21 +450,34 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                   </div>
                 ) : (
                   <div className="flex flex-col divide-y divide-[#F3F4F6]">
-                    {employees.map((emp) => (
+                    {employees.map((emp) => {
+                      const isPending = Boolean(emp.invited_at) && !emp.user_id;
+                      return (
                       <div key={emp.id} className="py-4 flex items-center gap-4">
                         {/* Avatar */}
                         <div
                           className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                          style={{ backgroundColor: "#1A3A52", ...mFont }}
+                          style={{ backgroundColor: isPending ? "#9CA3AF" : "#1A3A52", ...mFont }}
                         >
                           {emp.first_name[0]}{emp.last_name[0]}
                         </div>
 
                         {/* Infos */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-black" style={mFont}>
-                            {emp.first_name} {emp.last_name}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-black" style={mFont}>
+                              {emp.first_name} {emp.last_name}
+                            </p>
+                            {isPending && (
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: "#FEF3C7", color: "#B45309", ...mFont }}
+                                title="L'invitation a été envoyée — en attente de création du compte"
+                              >
+                                En attente de réponse
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 flex-wrap mt-0.5">
                             {emp.position && (
                               <span className="text-xs text-[#6B7280]" style={mFont}>{emp.position}</span>
@@ -434,29 +488,36 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                           </div>
                         </div>
 
-                        {/* Service (select inline) */}
-                        <form action={updateEmployeeServiceAction} className="flex items-center gap-2 shrink-0">
-                          <input type="hidden" name="employee_id" value={emp.id} />
-                          <select
-                            name="service_id"
-                            defaultValue={emp.service_id ?? ""}
-                            onChange={undefined}
-                            className="text-xs rounded-lg border border-[#E5E7EB] px-2 py-1.5 bg-white text-black focus:outline-none focus:border-[#1A3A52] transition-colors max-w-[140px]"
-                            style={mFont}
-                          >
-                            <option value="">Non assigné</option>
-                            {services.map((s) => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="submit"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#1A3A52] hover:bg-[#F0F4F7] transition-colors"
-                            title="Enregistrer"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                        </form>
+                        {/* Bouton "Copier l'invitation" (uniquement si en attente) */}
+                        {isPending && emp.email && (
+                          <CopyInviteLinkButton email={emp.email} />
+                        )}
+
+                        {/* Badge service (lecture) */}
+                        <span
+                          className="text-xs text-[#1A3A52] px-2 py-1 rounded-full shrink-0 max-w-[140px] truncate"
+                          style={{ backgroundColor: "#F0F4F7", ...mFont }}
+                          title={emp.service_id ? serviceMap[emp.service_id] ?? "Service inconnu" : "Non assigné"}
+                        >
+                          {emp.service_id ? serviceMap[emp.service_id] ?? "Service inconnu" : "Non assigné"}
+                        </span>
+
+                        {/* Modifier (modale) */}
+                        <EmployeeModal
+                          mode="edit"
+                          services={services.map((s) => ({ id: s.id, name: s.name }))}
+                          action={updateEmployeeAction}
+                          defaultOpen={editEmployeeId === emp.id}
+                          employee={{
+                            id: emp.id,
+                            first_name: emp.first_name,
+                            last_name: emp.last_name,
+                            email: emp.email,
+                            position: emp.position,
+                            service_id: emp.service_id,
+                          }}
+                        />
+
 
                         {/* Supprimer */}
                         <form action={deleteEmployeeAction}>
@@ -470,7 +531,8 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                           </button>
                         </form>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

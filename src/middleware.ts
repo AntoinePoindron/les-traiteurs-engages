@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
@@ -36,12 +36,24 @@ export async function proxy(request: NextRequest) {
   const publicRoutes = ["/login", "/register", "/reset-password"];
   const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
 
+  // Helper : propage les cookies refresh de Supabase SSR sur un
+  // redirect. Sans ça, si getUser() a rafraîchi les tokens, les
+  // nouveaux cookies sont perdus au redirect → prochaine requête
+  // utilise les anciens → refresh échoue (rotation one-shot) →
+  // redirect → boucle infinie.
+  function withCookies(resp: NextResponse) {
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      resp.cookies.set(cookie);
+    }
+    return resp;
+  }
+
   // Redirige vers login si non authentifié
   if (!user && !isPublicRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirectTo", pathname);
-    return NextResponse.redirect(loginUrl);
+    return withCookies(NextResponse.redirect(loginUrl));
   }
 
   // Redirige vers le bon dashboard si déjà connecté et sur une route publique
@@ -54,8 +66,8 @@ export async function proxy(request: NextRequest) {
 
     const typedProfile = profile as { role: string } | null;
     if (typedProfile) {
-      return NextResponse.redirect(
-        new URL(getDashboardPath(typedProfile.role), request.url)
+      return withCookies(
+        NextResponse.redirect(new URL(getDashboardPath(typedProfile.role), request.url))
       );
     }
   }

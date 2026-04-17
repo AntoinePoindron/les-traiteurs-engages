@@ -212,7 +212,7 @@ export default function CatererProfilePreviewModal({
                 <div className="flex flex-col gap-2">
                   {data.logoUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={data.logoUrl} alt="Logo" className="h-8 w-auto object-contain self-start" />
+                    <img src={data.logoUrl} alt="Logo" className="h-8 w-auto max-w-[160px] object-contain self-start" />
                   )}
                   <p
                     className="font-display font-bold text-2xl text-black leading-tight"

@@ -85,7 +85,7 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
                 <img
                   src={caterer.logo_url}
                   alt=""
-                  className="h-10 w-auto object-contain"
+                  className="h-10 w-auto max-w-[200px] object-contain shrink-0"
                 />
               ) : (
                 <div

@@ -96,7 +96,7 @@ export default async function CatererDetailPage({
                 <img
                   src={caterer.logo_url}
                   alt="Logo"
-                  className="h-8 w-auto object-contain self-start"
+                  className="h-8 w-auto max-w-[160px] object-contain self-start"
                 />
               )}
               <p

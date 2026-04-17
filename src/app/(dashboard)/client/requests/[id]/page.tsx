@@ -395,7 +395,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                     >
                       {cat.logo_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={cat.logo_url} alt="" className="h-8 w-auto object-contain shrink-0" />
+                        <img src={cat.logo_url} alt="" className="h-8 w-auto max-w-[120px] object-contain shrink-0" />
                       ) : (
                         <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
                           {cat.name[0]}
@@ -617,7 +617,7 @@ function QuoteCard({
           <img
             src={caterer.logo_url}
             alt=""
-            className="h-6 w-auto object-contain"
+            className="h-6 w-auto max-w-[100px] object-contain shrink-0"
             style={{ filter: isRefused ? "grayscale(1)" : undefined }}
           />
         ) : (

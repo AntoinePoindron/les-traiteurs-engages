@@ -130,10 +130,12 @@ export default function ClientRequestCard({ request }: { request: ClientRequestC
               <MapPin size={10} className="shrink-0" />
               <span className="truncate max-w-[160px]">{shortAddress}</span>
             </span>
-            {request.quotes_received_count > 0 && !request.has_accepted_quote && (
+            {!request.has_accepted_quote && (request.is_compare_mode || request.quotes_received_count > 0) && (
               <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: "#0284C7", ...mFont }}>
                 <FileText size={10} className="shrink-0" />
-                {request.quotes_received_count} devis
+                {request.is_compare_mode
+                  ? `${request.quotes_received_count}/3 devis`
+                  : `${request.quotes_received_count} devis`}
               </span>
             )}
           </div>

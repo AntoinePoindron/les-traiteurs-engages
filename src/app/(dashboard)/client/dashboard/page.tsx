@@ -372,9 +372,19 @@ export default async function ClientDashboardPage() {
                                 Créée le {formatDateTime(req.created_at)}
                               </span>
                             </div>
-                            <p className="text-xs text-[#6B7280]" style={mFont}>
-                              {serviceLabel}{eventDate ? ` · ${eventDate}` : ""}
-                            </p>
+                            <div className="flex items-center flex-wrap gap-x-2.5 gap-y-0.5">
+                              <span className="text-xs text-[#6B7280]" style={mFont}>
+                                {serviceLabel}{eventDate ? ` · ${eventDate}` : ""}
+                              </span>
+                              {!hasAccepted && (req.is_compare_mode || receivedCount > 0) && (
+                                <span className="flex items-center gap-0.5 text-xs font-bold" style={{ color: "#0284C7", ...mFont }}>
+                                  <FileText size={10} className="shrink-0" />
+                                  {req.is_compare_mode
+                                    ? `${receivedCount}/3 devis`
+                                    : `${receivedCount} devis`}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-3 shrink-0">
                             <StatusBadge variant={variant} />

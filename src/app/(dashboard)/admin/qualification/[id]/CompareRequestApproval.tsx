@@ -63,9 +63,6 @@ export default function CompareRequestApproval({
       {/* ── Colonne gauche : détail demande ── */}
       <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
         <div className="flex flex-col gap-1">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]" style={mFont}>
-            Demande du client
-          </p>
           <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
             {companyName ?? "—"}
           </p>
@@ -117,26 +114,12 @@ export default function CompareRequestApproval({
           </div>
         )}
 
-        {clientUserId && (
-          <div className="pt-4 border-t border-[#F3F4F6]">
-            <ContactClientButton
-              adminUserId={adminUserId}
-              clientUserId={clientUserId}
-              clientName={clientName}
-              requestId={requestId}
-              existingThreadId={existingThreadId}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── Colonne droite : panel d'approbation ── */}
       <div className="flex flex-col gap-4">
         <div className="bg-white rounded-lg p-5 flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[#9CA3AF]" style={mFont}>
-              Diffusion
-            </p>
             <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
               {matching.length} traiteur{matching.length > 1 ? "s" : ""} matchant{matching.length > 1 ? "s" : ""}
             </p>
@@ -233,6 +216,18 @@ export default function CompareRequestApproval({
               style={{ backgroundColor: "#FEF2F2", color: "#991B1B", ...mFont }}
             >
               Demande annulée.
+            </div>
+          )}
+
+          {clientUserId && (
+            <div className="pt-3 border-t border-[#F3F4F6]">
+              <ContactClientButton
+                adminUserId={adminUserId}
+                clientUserId={clientUserId}
+                clientName={clientName}
+                requestId={requestId}
+                existingThreadId={existingThreadId}
+              />
             </div>
           )}
         </div>

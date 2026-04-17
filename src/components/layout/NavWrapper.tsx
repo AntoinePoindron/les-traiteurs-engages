@@ -10,6 +10,7 @@ interface NavWrapperProps {
   role: UserRole;
   catererName?: string;
   companyName?: string;
+  companyLogoUrl?: string;
   userName?: string;
 }
 

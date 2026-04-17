@@ -27,7 +27,7 @@ export default async function DashboardLayout({
       caterer_id,
       company_id,
       caterers ( name ),
-      companies ( name )
+      companies ( name, logo_url )
     `)
     .eq("id", user.id)
     .single();
@@ -39,7 +39,7 @@ export default async function DashboardLayout({
     caterer_id: string | null;
     company_id: string | null;
     caterers: { name: string } | null;
-    companies: { name: string } | null;
+    companies: { name: string; logo_url: string | null } | null;
   } | null;
 
   if (!profile) {
@@ -53,6 +53,7 @@ export default async function DashboardLayout({
 
   const catererName = profile.caterers?.name as string | undefined;
   const companyName = profile.companies?.name as string | undefined;
+  const companyLogoUrl = profile.companies?.logo_url ?? undefined;
 
   return (
     <div className="flex min-h-screen bg-cream">
@@ -60,6 +61,7 @@ export default async function DashboardLayout({
         role={profile.role}
         catererName={catererName}
         companyName={companyName}
+        companyLogoUrl={companyLogoUrl}
         userName={userName}
       />
 

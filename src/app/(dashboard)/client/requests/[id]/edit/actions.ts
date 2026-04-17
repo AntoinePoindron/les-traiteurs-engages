@@ -150,13 +150,23 @@ export async function updateQuoteRequest(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  const { data: updated, error } = await (supabase as any)
     .from("quote_requests")
     .update(updatePayload)
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .select("id");
 
   const err = error as { message: string } | null;
   if (err) return { ok: false, error: err.message };
+
+  // If no rows came back, the UPDATE was silently blocked by RLS. This
+  // means the policy doesn't allow this edit — likely a missing migration.
+  if (!Array.isArray(updated) || updated.length === 0) {
+    return {
+      ok: false,
+      error: "Modification bloquée par les permissions de la base. Vérifie que la migration 021 a bien été appliquée.",
+    };
+  }
 
   revalidatePath(`/client/requests/${requestId}`);
   revalidatePath("/client/requests");

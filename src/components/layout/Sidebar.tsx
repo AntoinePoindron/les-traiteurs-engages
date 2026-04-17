@@ -290,9 +290,9 @@ export default function Sidebar({ role, catererName, catererLogoUrl, companyName
       {entityName && (
         <div className="px-5 pb-4 flex items-center gap-2">
           {entityLogoUrl && (
-            <div className="w-7 h-7 rounded-full overflow-hidden bg-[#F0F4F8] shrink-0">
+            <div className="w-7 h-7 rounded-full overflow-hidden bg-white shrink-0 flex items-center justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={entityLogoUrl} alt="" className="w-full h-full object-cover" />
+              <img src={entityLogoUrl} alt="" className="w-full h-full object-contain p-0.5" />
             </div>
           )}
           <span

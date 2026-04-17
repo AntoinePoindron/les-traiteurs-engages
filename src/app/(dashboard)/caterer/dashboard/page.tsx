@@ -43,59 +43,83 @@ export default async function CatererDashboardPage() {
   const catererLogoUrl = profile?.caterers?.logo_url;
   const catererIsValidated = profile?.caterers?.is_validated ?? true;
 
-  // ── KPIs ────────────────────────────────────────────────────
-
-  const { count: newRequestsCount } = await supabase
-    .from("quote_request_caterers")
-    .select("*", { count: "exact", head: true })
-    .eq("caterer_id", catererId ?? "")
-    .eq("status", "selected");
-
-  const { count: pendingQuotesCount } = await supabase
-    .from("quotes")
-    .select("*", { count: "exact", head: true })
-    .eq("caterer_id", catererId ?? "")
-    .eq("status", "sent");
-
-  const { count: activeOrdersCount } = await supabase
-    .from("orders")
-    .select("*, quotes!inner(caterer_id)", { count: "exact", head: true })
-    .eq("quotes.caterer_id", catererId ?? "")
-    .eq("status", "confirmed");
+  // ── Fetch all dashboard data in parallel ────────────────────
 
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  const { data: monthOrders } = await supabase
-    .from("orders")
-    .select("quotes!inner(total_amount_ht, caterer_id)")
-    .eq("quotes.caterer_id", catererId ?? "")
-    .gte("created_at", startOfMonth.toISOString())
-    .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
+  const catererIdOrEmpty = catererId ?? "";
+
+  const [
+    { count: newRequestsCount },
+    { count: pendingQuotesCount },
+    { count: activeOrdersCount },
+    { data: monthOrders },
+    { data: assignedRequests },
+    { data: upcomingOrdersData },
+  ] = await Promise.all([
+    supabase
+      .from("quote_request_caterers")
+      .select("*", { count: "exact", head: true })
+      .eq("caterer_id", catererIdOrEmpty)
+      .eq("status", "selected"),
+
+    supabase
+      .from("quotes")
+      .select("*", { count: "exact", head: true })
+      .eq("caterer_id", catererIdOrEmpty)
+      .eq("status", "sent"),
+
+    supabase
+      .from("orders")
+      .select("*, quotes!inner(caterer_id)", { count: "exact", head: true })
+      .eq("quotes.caterer_id", catererIdOrEmpty)
+      .eq("status", "confirmed"),
+
+    supabase
+      .from("orders")
+      .select("quotes!inner(total_amount_ht, caterer_id)")
+      .eq("quotes.caterer_id", catererIdOrEmpty)
+      .gte("created_at", startOfMonth.toISOString())
+      .in("status", ["confirmed", "delivered", "invoiced", "paid"]),
+
+    supabase
+      .from("quote_request_caterers")
+      .select(`
+        status,
+        quote_requests (
+          id, title, event_date, event_address, guest_count,
+          budget_global, meal_type, created_at,
+          users ( first_name, last_name ),
+          companies ( name )
+        )
+      `)
+      .eq("caterer_id", catererIdOrEmpty)
+      .eq("status", "selected")
+      .order("created_at", { ascending: false })
+      .limit(5),
+
+    supabase
+      .from("orders")
+      .select(`
+        id, delivery_date, delivery_address,
+        quotes!inner (
+          caterer_id,
+          quote_requests ( company_id, meal_type, companies ( name ) )
+        )
+      `)
+      .eq("quotes.caterer_id", catererIdOrEmpty)
+      .eq("status", "confirmed")
+      .gte("delivery_date", new Date().toISOString())
+      .order("delivery_date", { ascending: true })
+      .limit(3),
+  ]);
 
   const caMonthly = (monthOrders ?? []).reduce((sum, o) => {
     const q = (o as { quotes: { total_amount_ht: number } | null }).quotes;
     return sum + (q?.total_amount_ht ?? 0);
   }, 0);
-
-  // ── Demandes à traiter ──────────────────────────────────────
-
-  const { data: assignedRequests } = await supabase
-    .from("quote_request_caterers")
-    .select(`
-      status,
-      quote_requests (
-        id, title, event_date, event_address, guest_count,
-        budget_global, meal_type, created_at,
-        users ( first_name, last_name ),
-        companies ( name )
-      )
-    `)
-    .eq("caterer_id", catererId ?? "")
-    .eq("status", "selected")
-    .order("created_at", { ascending: false })
-    .limit(5);
 
   const requests = (assignedRequests ?? [])
     .map((row) => {
@@ -136,21 +160,6 @@ export default async function CatererDashboardPage() {
     }>;
 
   // ── Commandes à venir ───────────────────────────────────────
-
-  const { data: upcomingOrdersData } = await supabase
-    .from("orders")
-    .select(`
-      id, delivery_date, delivery_address,
-      quotes!inner (
-        caterer_id,
-        quote_requests ( company_id, meal_type, companies ( name ) )
-      )
-    `)
-    .eq("quotes.caterer_id", catererId ?? "")
-    .eq("status", "confirmed")
-    .gte("delivery_date", new Date().toISOString())
-    .order("delivery_date", { ascending: true })
-    .limit(3);
 
   const upcomingOrders = (upcomingOrdersData ?? []).map((o) => {
     const order = o as {

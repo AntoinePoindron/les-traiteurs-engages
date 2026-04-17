@@ -26,7 +26,7 @@ export default async function DashboardLayout({
       last_name,
       caterer_id,
       company_id,
-      caterers ( name ),
+      caterers ( name, logo_url ),
       companies ( name, logo_url )
     `)
     .eq("id", user.id)
@@ -38,7 +38,7 @@ export default async function DashboardLayout({
     last_name: string | null;
     caterer_id: string | null;
     company_id: string | null;
-    caterers: { name: string } | null;
+    caterers: { name: string; logo_url: string | null } | null;
     companies: { name: string; logo_url: string | null } | null;
   } | null;
 
@@ -52,6 +52,7 @@ export default async function DashboardLayout({
       : user.email ?? "";
 
   const catererName = profile.caterers?.name as string | undefined;
+  const catererLogoUrl = profile.caterers?.logo_url ?? undefined;
   const companyName = profile.companies?.name as string | undefined;
   const companyLogoUrl = profile.companies?.logo_url ?? undefined;
 
@@ -60,6 +61,7 @@ export default async function DashboardLayout({
       <NavWrapper
         role={profile.role}
         catererName={catererName}
+        catererLogoUrl={catererLogoUrl}
         companyName={companyName}
         companyLogoUrl={companyLogoUrl}
         userName={userName}

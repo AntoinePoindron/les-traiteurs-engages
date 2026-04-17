@@ -9,6 +9,7 @@ import type { UserRole } from "@/types/database";
 interface NavWrapperProps {
   role: UserRole;
   catererName?: string;
+  catererLogoUrl?: string;
   companyName?: string;
   companyLogoUrl?: string;
   userName?: string;

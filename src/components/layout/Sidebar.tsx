@@ -140,6 +140,7 @@ function initials(name: string): string {
 interface SidebarProps {
   role: UserRole;
   catererName?: string;
+  catererLogoUrl?: string;
   companyName?: string;
   companyLogoUrl?: string;
   userName?: string;
@@ -147,11 +148,11 @@ interface SidebarProps {
 
 // ── Component ──────────────────────────────────────────────────
 
-export default function Sidebar({ role, catererName, companyName, companyLogoUrl, userName }: SidebarProps) {
+export default function Sidebar({ role, catererName, catererLogoUrl, companyName, companyLogoUrl, userName }: SidebarProps) {
   const pathname  = usePathname();
   const navItems  = getNav(role);
   const entityName = catererName ?? companyName ?? "";
-  const entityLogoUrl = catererName ? undefined : companyLogoUrl;
+  const entityLogoUrl = catererName ? catererLogoUrl : companyLogoUrl;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
   // ── Notifications state

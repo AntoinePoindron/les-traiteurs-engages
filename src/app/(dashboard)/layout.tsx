@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NavWrapper from "@/components/layout/NavWrapper";
+import DevUserSwitcher from "@/components/dev/DevUserSwitcher";
 import type { UserRole } from "@/types/database";
 
 export default async function DashboardLayout({
@@ -71,6 +72,10 @@ export default async function DashboardLayout({
       <div className="flex-1 flex flex-col min-w-0 pt-14 md:pt-0">
         {children}
       </div>
+
+      {process.env.NODE_ENV === "development" && (
+        <DevUserSwitcher currentUserId={user.id} />
+      )}
 
     </div>
   );

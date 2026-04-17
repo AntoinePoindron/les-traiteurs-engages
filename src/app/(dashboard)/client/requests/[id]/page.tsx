@@ -69,7 +69,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
   const { data: reqData } = await (supabase as any)
     .from("quote_requests")
     .select(`
-      id, title, status, created_at,
+      id, title, status, created_at, updated_at,
       service_type, service_type_secondary, is_full_day, meal_type, meal_type_secondary,
       event_date, event_start_time, event_end_time, event_address, guest_count,
       budget_global, budget_per_person, budget_flexibility,
@@ -246,6 +246,13 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
               </h1>
               <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
                 Créée le {formatDateTime(request.created_at)}
+                {request.updated_at &&
+                  new Date(request.updated_at).getTime() - new Date(request.created_at).getTime() > 60_000 && (
+                    <>
+                      {" · "}
+                      <span>Modifiée le {formatDateTime(request.updated_at)}</span>
+                    </>
+                  )}
               </p>
             </div>
             <div className="flex items-center gap-3 shrink-0">

@@ -48,14 +48,15 @@ const clientUserNav: NavItem[] = [
 ];
 
 const clientAdminNav: NavItem[] = [
-  { label: "Tableau de bord", href: "/client/dashboard", icon: LayoutDashboard },
-  { label: "Demandes",        href: "/client/requests",  icon: FileText },
-  { label: "Commandes",       href: "/client/orders",    icon: ShoppingBag },
-  { label: "Facturation",     href: "/client/invoices",  icon: Receipt },
-  { label: "Équipe",          href: "/client/team",      icon: Users },
-  { label: "Messagerie",      href: "/client/messages",  icon: MessageSquare },
-  { label: "Mon profil",         href: "/client/profile",   icon: User },
-  { label: "Paramètres structure", href: "/client/settings",  icon: Settings },
+  { label: "Tableau de bord",     href: "/client/dashboard", icon: LayoutDashboard },
+  { label: "Trouver un traiteur", href: "/client/search",    icon: ChefHat },
+  { label: "Demandes",            href: "/client/requests",  icon: FileText },
+  { label: "Commandes",           href: "/client/orders",    icon: ShoppingBag },
+  { label: "Facturation",         href: "/client/invoices",  icon: Receipt },
+  { label: "Équipe",              href: "/client/team",      icon: Users },
+  { label: "Messagerie",          href: "/client/messages",  icon: MessageSquare },
+  { label: "Mon profil",          href: "/client/profile",   icon: User },
+  { label: "Paramètres structure", href: "/client/settings", icon: Settings },
 ];
 
 const adminNav: NavItem[] = [

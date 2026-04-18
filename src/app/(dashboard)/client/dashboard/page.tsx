@@ -436,6 +436,12 @@ export default async function ClientDashboardPage() {
                           SERVICE_TYPE_LABELS[qr?.service_type ?? ""] ||
                           SERVICE_TYPE_LABELS[qr?.meal_type ?? ""] ||
                           qr?.service_type || qr?.meal_type || "—";
+                        const eventDateIso = qr?.event_date ?? order.delivery_date ?? null;
+                        const eventDateLabel = eventDateIso
+                          ? new Date(eventDateIso).toLocaleDateString("fr-FR", {
+                              day: "numeric", month: "short", year: "numeric",
+                            })
+                          : null;
                         return (
                           <Link
                             key={order.id}
@@ -455,7 +461,7 @@ export default async function ClientDashboardPage() {
                                 )}
                               </div>
                               <p className="text-xs text-[#6B7280]" style={mFont}>
-                                {q?.caterers?.name}
+                                {eventDateLabel ?? "—"}
                                 {q?.total_amount_ht ? ` · ${Number(q.total_amount_ht).toLocaleString("fr-FR")} €` : ""}
                               </p>
                             </div>

@@ -19,6 +19,7 @@ type ThreadSummary = {
   partner_id: string;
   partner_name: string;
   company_name: string;
+  company_logo_url: string | null;
   last_message_body: string;
   last_message_at: string;
   unread_count: number;
@@ -106,6 +107,7 @@ function buildThreads(
         partner_id: data.partner_id,
         partner_name,
         company_name: profile?.companies?.name ?? profile?.caterers?.name ?? partner_name,
+        company_logo_url: profile?.companies?.logo_url ?? profile?.caterers?.logo_url ?? null,
         last_message_body: data.lastMsg.body,
         last_message_at: data.lastMsg.created_at,
         unread_count: data.unread,
@@ -119,11 +121,25 @@ function buildThreads(
 
 function InitialsAvatar({
   name,
+  logoUrl = null,
   size = 40,
 }: {
   name: string;
+  logoUrl?: string | null;
   size?: number;
 }) {
+  if (logoUrl) {
+    return (
+      <div
+        className="rounded-xl overflow-hidden shrink-0 bg-white flex items-center justify-center"
+        style={{ width: size, height: size, border: "1px solid #F3F4F6" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logoUrl} alt={name} className="w-full h-full object-contain p-1" />
+      </div>
+    );
+  }
+
   const initial = name.trim()[0]?.toUpperCase() ?? "?";
   const bg = avatarColor(name);
   return (
@@ -157,7 +173,7 @@ function ThreadItem({
       className="w-full flex gap-3 items-start px-5 py-4 text-left transition-colors border-b border-[#F2F2F2] last:border-0"
       style={{ backgroundColor: isActive ? "#F0F7FF" : "transparent" }}
     >
-      <InitialsAvatar name={thread.company_name} size={40} />
+      <InitialsAvatar name={thread.company_name} logoUrl={thread.company_logo_url} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
           <p
@@ -197,10 +213,12 @@ function MessageBubble({
   message,
   isFromMe,
   partnerName,
+  partnerLogoUrl = null,
 }: {
   message: Message;
   isFromMe: boolean;
   partnerName: string;
+  partnerLogoUrl?: string | null;
 }) {
   if (isFromMe) {
     return (
@@ -228,7 +246,7 @@ function MessageBubble({
 
   return (
     <div className="flex gap-2 items-end">
-      <InitialsAvatar name={partnerName} size={28} />
+      <InitialsAvatar name={partnerName} logoUrl={partnerLogoUrl} size={28} />
       <div
         className="max-w-[70%] flex flex-col gap-1.5 p-4 rounded-xl border border-[#F2F2F2]"
         style={{ backgroundColor: "#FFFFFF" }}
@@ -493,7 +511,11 @@ export default function MessagingLayout({
                       >
                         <ChevronLeft size={20} />
                       </button>
-                      <InitialsAvatar name={selectedThread?.company_name ?? activePendingThread!.companyName} size={56} />
+                      <InitialsAvatar
+                        name={selectedThread?.company_name ?? activePendingThread!.companyName}
+                        logoUrl={selectedThread?.company_logo_url ?? null}
+                        size={56}
+                      />
                       <div className="flex flex-col gap-0.5">
                         <p
                           className="font-display font-bold text-xl text-black leading-tight"
@@ -554,6 +576,7 @@ export default function MessagingLayout({
                             message={msg}
                             isFromMe={msg.sender_id === myUserId}
                             partnerName={selectedThread?.company_name ?? activePendingThread!.companyName}
+                            partnerLogoUrl={selectedThread?.company_logo_url ?? null}
                           />
                         ))
                       )

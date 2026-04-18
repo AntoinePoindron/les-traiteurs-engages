@@ -55,7 +55,7 @@ export default async function AdminMessagesPage({ searchParams }: PageProps) {
   if (partnerIds.length > 0) {
     const { data: profilesData } = await supabase
       .from("users")
-      .select("id, first_name, last_name, companies(name), caterers!caterer_id(name)")
+      .select("id, first_name, last_name, companies(name, logo_url), caterers!caterer_id(name, logo_url)")
       .in("id", partnerIds);
 
     partnerProfiles = (profilesData ?? []) as unknown as PartnerProfile[];

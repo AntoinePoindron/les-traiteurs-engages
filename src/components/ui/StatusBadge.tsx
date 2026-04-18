@@ -12,7 +12,7 @@ const variantStyles: Record<BadgeVariant, { bg: string; text: string; label: str
   accepted:         { bg: "#D1FAE5", text: "#065F46",  label: "Commande créée" },
   refused:          { bg: "#FEE2E2", text: "#DC2626",  label: "Refusé" },
   expired:          { bg: "#F3F4F6", text: "#6B7280",  label: "Expiré" },
-  confirmed:        { bg: "#EDE9FE", text: "#7C3AED",  label: "Confirmée" },
+  confirmed:        { bg: "#EDE9FE", text: "#7C3AED",  label: "À venir" },
   delivered:        { bg: "#DCFCE7", text: "#16A34A",  label: "Livrée" },
   invoiced:         { bg: "#E0F2FE", text: "#0284C7",  label: "Facturée" },
   paid:             { bg: "#D1FAE5", text: "#065F46",  label: "Payée" },

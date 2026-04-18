@@ -13,7 +13,7 @@ import type { OrderStatus } from "@/types/database";
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
 const ORDER_STATUS_STEPS: { status: OrderStatus; label: string }[] = [
-  { status: "confirmed", label: "Confirmée" },
+  { status: "confirmed", label: "À venir" },
   { status: "delivered", label: "Livrée" },
   { status: "invoiced",  label: "Facturée" },
   { status: "paid",      label: "Payée" },

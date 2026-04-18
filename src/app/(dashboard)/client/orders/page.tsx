@@ -25,7 +25,7 @@ type OrderFilter = "all" | "confirmed" | "delivered" | "invoiced" | "paid";
 
 const FILTER_TABS: { key: OrderFilter; label: string }[] = [
   { key: "all",       label: "Toutes" },
-  { key: "confirmed", label: "Confirmées" },
+  { key: "confirmed", label: "À venir" },
   { key: "delivered", label: "Livrées" },
   { key: "invoiced",  label: "Facturées" },
   { key: "paid",      label: "Payées" },

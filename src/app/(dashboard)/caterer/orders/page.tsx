@@ -12,7 +12,7 @@ interface PageProps {
 
 const FILTER_TABS: { value: OrderFilter; label: string }[] = [
   { value: "all",       label: "Toutes" },
-  { value: "confirmed", label: "Confirmées" },
+  { value: "confirmed", label: "À venir" },
   { value: "delivered", label: "Livrées" },
   { value: "invoiced",    label: "Facturées" },
   { value: "paid",        label: "Payées" },

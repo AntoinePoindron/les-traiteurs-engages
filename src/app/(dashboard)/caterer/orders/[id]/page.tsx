@@ -19,7 +19,7 @@ const STATUS_TRANSITIONS: Partial<Record<OrderStatus, { next: OrderStatus; label
 };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
-  confirmed:  "Confirmée",
+  confirmed:  "À venir",
   delivered:  "Livrée",
   invoiced:    "Facturée",
   paid:        "Payée",

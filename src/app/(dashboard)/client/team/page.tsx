@@ -42,6 +42,7 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const currentUserId = user!.id;
 
   const { data: profile } = await supabase
     .from("users").select("company_id, role").eq("id", user!.id).single();
@@ -452,6 +453,7 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                   <div className="flex flex-col divide-y divide-[#F3F4F6]">
                     {employees.map((emp) => {
                       const isPending = Boolean(emp.invited_at) && !emp.user_id;
+                      const isSelf = emp.user_id === currentUserId;
                       return (
                       <div key={emp.id} className="py-4 flex items-center gap-4">
                         {/* Avatar */}
@@ -475,6 +477,15 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                                 title="L'invitation a été envoyée — en attente de création du compte"
                               >
                                 En attente de réponse
+                              </span>
+                            )}
+                            {isSelf && (
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: "#E0F2FE", color: "#075985", ...mFont }}
+                                title="C'est votre ligne"
+                              >
+                                Vous
                               </span>
                             )}
                           </div>
@@ -519,17 +530,21 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                         />
 
 
-                        {/* Supprimer */}
-                        <form action={deleteEmployeeAction}>
-                          <input type="hidden" name="employee_id" value={emp.id} />
-                          <button
-                            type="submit"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors shrink-0"
-                            title="Supprimer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </form>
+                        {/* Supprimer — masqué pour sa propre ligne (voir aussi garde-fou dans l'action serveur) */}
+                        {!isSelf ? (
+                          <form action={deleteEmployeeAction}>
+                            <input type="hidden" name="employee_id" value={emp.id} />
+                            <button
+                              type="submit"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-[#DC2626] hover:bg-[#FEF2F2] transition-colors shrink-0"
+                              title="Supprimer"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="w-7 h-7 shrink-0" aria-hidden />
+                        )}
                       </div>
                       );
                     })}

@@ -345,6 +345,18 @@ export async function signupAction(formData: FormData): Promise<SignupResult> {
     companyId = createdCompany.id;
     companyDisplayName = createdCompany.name;
     isFirstUser = true;
+
+    // Créer un service "Direction" par défaut pour cette nouvelle entreprise.
+    // Le client_admin y sera rattaché plus bas, et ce service pourra servir
+    // de catégorie par défaut pour les demandes/commandes de l'admin.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from("company_services")
+      .insert({
+        company_id:    companyId,
+        name:          "Direction",
+        annual_budget: 0,
+      });
   }
 
   // ── Mise à jour du profil user ─────────────────────────────
@@ -372,6 +384,38 @@ export async function signupAction(formData: FormData): Promise<SignupResult> {
     console.error("[signupAction] upsert user profile failed:", updateErr);
     await admin.auth.admin.deleteUser(userId);
     return { ok: false, error: `Configuration du compte impossible : ${updateErr.message}` };
+  }
+
+  // ── Admin : rattachement automatique à Effectifs / service Direction ──
+  // L'admin apparaît dans la section Effectifs avec un service par défaut
+  // "Direction" qu'il peut ensuite modifier s'il le souhaite. Pour les
+  // entreprises nouvellement créées, le service Direction vient d'être
+  // inséré juste au-dessus. Pour une entreprise existante, il est censé
+  // exister grâce à la migration 022 (ou a été créé manuellement).
+  if (isFirstUser) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: directionService } = await (admin as any)
+      .from("company_services")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("name", "Direction")
+      .limit(1)
+      .maybeSingle();
+
+    const directionId = (directionService as { id: string } | null)?.id ?? null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from("company_employees")
+      .insert({
+        company_id: companyId,
+        service_id: directionId,
+        user_id:    userId,
+        first_name: firstName,
+        last_name:  lastName,
+        email,
+        position:   "Administrateur",
+      });
   }
 
   // ── Notification aux admins si pending ────────────────────

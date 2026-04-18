@@ -15,6 +15,7 @@ import {
   rejectMembershipAction,
 } from "./actions";
 import EmployeeModal from "@/components/client/EmployeeModal";
+import ServiceModal from "@/components/client/ServiceModal";
 import CopyInviteLinkButton from "@/components/client/CopyInviteLinkButton";
 import { CheckCircle, XCircle } from "lucide-react";
 
@@ -182,71 +183,13 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
           {activeTab === "services" && (
             <div className="flex flex-col gap-4">
 
-              {/* Formulaire d'ajout */}
-              {action === "add-service" ? (
-                <div className="bg-white rounded-lg p-6">
-                  <p className="font-display font-bold text-xl text-black mb-4" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Ajouter un service
-                  </p>
-                  <form action={createServiceAction} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Nom du service *</label>
-                      <input
-                        name="name" required
-                        placeholder="Ex. : Direction, RH, DSI…"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Description</label>
-                      <input
-                        name="description"
-                        placeholder="Courte description (optionnel)"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-bold text-black" style={mFont}>Budget annuel traiteur (€ HT)</label>
-                      <input
-                        name="annual_budget" type="number" min="0" step="100"
-                        placeholder="Ex. : 5000"
-                        className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
-                        style={mFont}
-                      />
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                      <Link
-                        href="/client/team?tab=services"
-                        className="flex-1 flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
-                        style={mFont}
-                      >
-                        Annuler
-                      </Link>
-                      <button
-                        type="submit"
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
-                        style={{ backgroundColor: "#1A3A52", ...mFont }}
-                      >
-                        <Plus size={13} />
-                        Créer le service
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              ) : (
-                <div className="flex justify-end">
-                  <Link
-                    href="/client/team?tab=services&action=add-service"
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
-                    style={{ backgroundColor: "#1A3A52", ...mFont }}
-                  >
-                    <Plus size={14} />
-                    Nouveau service
-                  </Link>
-                </div>
-              )}
+              {/* Bouton "Nouveau service" → ouvre la modale */}
+              <div className="flex justify-end">
+                <ServiceModal
+                  action={createServiceAction}
+                  defaultOpen={action === "add-service"}
+                />
+              </div>
 
               {/* Liste des services */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-0">

@@ -159,26 +159,6 @@ export default async function AdminStatsPage() {
   });
   const maxActivity = Math.max(1, ...activityData.flatMap((a) => [a.requests, a.orders]));
 
-  // ── Funnel ─────────────────────────────────────────────────
-
-  const totalRequests = requests.length;
-  const qualifiedRequests = requests.filter((r) =>
-    ["approved", "sent_to_caterers", "completed"].includes(r.status)
-  ).length;
-  const requestsWithQuotes = requests.filter(
-    (r) => Array.isArray(r.quotes) && r.quotes.length > 0
-  ).length;
-  const requestsWithAcceptedQuote = requests.filter(
-    (r) => Array.isArray(r.quotes) && r.quotes.some((q: Row) => q.status === "accepted")
-  ).length;
-
-  const funnelSteps = [
-    { label: "Demandes soumises",         count: totalRequests,           icon: FileText },
-    { label: "Qualifiées par l'admin",    count: qualifiedRequests,       icon: FileText },
-    { label: "Avec au moins un devis",    count: requestsWithQuotes,      icon: FileText },
-    { label: "Converties en commande",    count: requestsWithAcceptedQuote, icon: ShoppingBag },
-  ];
-
   // ── Top caterers / companies ────────────────────────────────
 
   const acceptedOrders = orders.filter((o) => ACCEPTED_ORDER_STATUSES.includes(o.status));
@@ -314,44 +294,7 @@ export default async function AdminStatsPage() {
             </div>
           </Section>
 
-          {/* Bloc 3 : Funnel */}
-          <Section title="Funnel de conversion (6 derniers mois)">
-            <div className="flex flex-col gap-2">
-              {funnelSteps.map((step, i) => {
-                const prev = i > 0 ? funnelSteps[i - 1].count : null;
-                const conversion = prev != null && prev > 0 ? Math.round((step.count / prev) * 100) : null;
-                const width = totalRequests > 0 ? (step.count / totalRequests) * 100 : 0;
-                return (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <step.icon size={14} className="text-[#9CA3AF] shrink-0" />
-                        <p className="text-sm font-bold text-black" style={mFont}>{step.label}</p>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        {conversion != null && (
-                          <span className="text-[11px] text-[#6B7280]" style={mFont}>
-                            {conversion}% de l&apos;étape précédente
-                          </span>
-                        )}
-                        <span className="text-sm font-bold text-black min-w-[40px] text-right" style={mFont}>
-                          {step.count}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-2 rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${Math.max(width, 2)}%`, backgroundColor: "#1A3A52" }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* Bloc 4 : Top listings */}
+          {/* Bloc 3 : Top listings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Section title="Top 5 traiteurs">
               {topCaterers.length === 0 ? (
@@ -414,7 +357,7 @@ export default async function AdminStatsPage() {
             </Section>
           </div>
 
-          {/* Bloc 4 bis : breakdown par type de prestation */}
+          {/* Bloc 4 : breakdown par type de prestation */}
           <Section title="Répartition par type de prestation (6 derniers mois)">
             {serviceBreakdown.length === 0 ? (
               <p className="text-sm text-[#6B7280] py-4 text-center" style={mFont}>

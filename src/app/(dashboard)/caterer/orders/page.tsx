@@ -99,7 +99,7 @@ export default async function CatererOrdersPage({ searchParams }: PageProps) {
           </h1>
 
           {/* Filtres */}
-          <div className="bg-white rounded-lg px-6 py-4 flex items-center gap-2 overflow-x-auto">
+          <div className="bg-white rounded-lg p-6 flex items-center gap-2 overflow-x-auto">
             {FILTER_TABS.map((tab) => {
               const isActive = activeFilter === tab.value;
               return (

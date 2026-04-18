@@ -8,8 +8,8 @@ const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 type CatFilter = "pending" | "validated";
 
 const FILTER_TABS: { key: CatFilter; label: string }[] = [
-  { key: "pending",   label: "En attente" },
   { key: "validated", label: "Validés" },
+  { key: "pending",   label: "En attente" },
 ];
 
 interface PageProps {
@@ -18,7 +18,7 @@ interface PageProps {
 
 export default async function AdminCaterersPage({ searchParams }: PageProps) {
   const { filter } = await searchParams;
-  const activeFilter = (filter as CatFilter) ?? "pending";
+  const activeFilter = (filter as CatFilter) ?? "validated";
 
   const supabase = await createClient();
 

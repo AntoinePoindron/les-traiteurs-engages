@@ -7,6 +7,7 @@ import {
 import type { CompanyService, CompanyEmployee } from "@/types/database";
 import {
   createServiceAction,
+  updateServiceAction,
   deleteServiceAction,
   createEmployeeAction,
   updateEmployeeAction,
@@ -223,6 +224,16 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                               )}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
+                              <ServiceModal
+                                mode="edit"
+                                action={updateServiceAction}
+                                service={{
+                                  id: service.id,
+                                  name: service.name,
+                                  description: service.description,
+                                  annual_budget: service.annual_budget ?? 0,
+                                }}
+                              />
                               <form action={deleteServiceAction}>
                                 <input type="hidden" name="service_id" value={service.id} />
                                 <button

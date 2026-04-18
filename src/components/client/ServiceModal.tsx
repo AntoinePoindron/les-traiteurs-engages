@@ -2,12 +2,24 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
-import { Plus, X } from "lucide-react";
+import { Plus, Pencil, X } from "lucide-react";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
+type Mode = "add" | "edit";
+
+interface Service {
+  id: string;
+  name: string;
+  description: string | null;
+  annual_budget: number;
+}
+
 interface Props {
+  mode?: Mode;
   action: (formData: FormData) => void | Promise<void>;
+  /** Requis si mode === "edit" */
+  service?: Service;
   /** Si true, la modale s'ouvre dès le montage (utile via un lien). */
   defaultOpen?: boolean;
 }
@@ -26,8 +38,11 @@ function CloseOnSubmitEnd({ onClose }: { onClose: () => void }) {
   return null;
 }
 
-function SubmitButton() {
+function SubmitButton({ mode }: { mode: Mode }) {
   const { pending } = useFormStatus();
+  const Icon = mode === "add" ? Plus : Pencil;
+  const idleLabel = mode === "add" ? "Créer le service" : "Enregistrer";
+  const pendingLabel = mode === "add" ? "Création en cours…" : "Enregistrement…";
   return (
     <button
       type="submit"
@@ -35,13 +50,18 @@ function SubmitButton() {
       className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity disabled:opacity-60"
       style={{ backgroundColor: "#1A3A52", ...mFont }}
     >
-      <Plus size={13} />
-      {pending ? "Création en cours…" : "Créer le service"}
+      <Icon size={13} />
+      {pending ? pendingLabel : idleLabel}
     </button>
   );
 }
 
-export default function ServiceModal({ action, defaultOpen = false }: Props) {
+export default function ServiceModal({
+  mode = "add",
+  action,
+  service,
+  defaultOpen = false,
+}: Props) {
   const [open, setOpen] = useState(defaultOpen);
 
   // Fermer avec Échap
@@ -63,17 +83,35 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
     }
   }, [open]);
 
+  const isEdit = mode === "edit";
+  const title = isEdit ? "Modifier le service" : "Ajouter un service";
+  const subtitle = isEdit
+    ? "Mettez à jour le nom, la description ou le budget de ce service."
+    : "Créez un service interne (direction, RH, DSI…) auquel rattacher vos collaborateurs et vos dépenses.";
+
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
-        style={{ backgroundColor: "#1A3A52", ...mFont }}
-      >
-        <Plus size={14} />
-        Nouveau service
-      </button>
+      {isEdit ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-[#1A3A52] hover:bg-[#F0F4F7] transition-colors shrink-0"
+          title="Modifier"
+          aria-label="Modifier le service"
+        >
+          <Pencil size={12} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-bold text-white hover:opacity-80 transition-opacity"
+          style={{ backgroundColor: "#1A3A52", ...mFont }}
+        >
+          <Plus size={14} />
+          Nouveau service
+        </button>
+      )}
 
       {open && (
         <div
@@ -87,20 +125,20 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
             className="bg-white rounded-lg w-full max-w-[520px] flex flex-col shadow-xl"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="service-modal-title"
+            aria-labelledby={`service-modal-title-${service?.id ?? "add"}`}
           >
             {/* En-tête */}
             <div className="flex items-start justify-between gap-4 p-6 pb-4">
               <div className="flex flex-col gap-1">
                 <p
-                  id="service-modal-title"
+                  id={`service-modal-title-${service?.id ?? "add"}`}
                   className="font-display font-bold text-xl text-black"
                   style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                 >
-                  Ajouter un service
+                  {title}
                 </p>
                 <p className="text-xs text-[#6B7280]" style={mFont}>
-                  Créez un service interne (direction, RH, DSI…) auquel rattacher vos collaborateurs et vos dépenses.
+                  {subtitle}
                 </p>
               </div>
               <button
@@ -117,11 +155,16 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
             <form action={action} className="flex flex-col gap-4 px-6 pb-6">
               <CloseOnSubmitEnd onClose={() => setOpen(false)} />
 
+              {isEdit && service && (
+                <input type="hidden" name="service_id" value={service.id} />
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-black" style={mFont}>Nom du service *</label>
                 <input
                   name="name"
                   required
+                  defaultValue={service?.name ?? ""}
                   placeholder="Ex. : Direction, RH, DSI…"
                   className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
                   style={mFont}
@@ -133,6 +176,7 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
                 <label className="text-xs font-bold text-black" style={mFont}>Description</label>
                 <input
                   name="description"
+                  defaultValue={service?.description ?? ""}
                   placeholder="Courte description (optionnel)"
                   className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
                   style={mFont}
@@ -146,6 +190,7 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
                   type="number"
                   min="0"
                   step="100"
+                  defaultValue={service?.annual_budget ?? ""}
                   placeholder="Ex. : 5000"
                   className="w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm text-black focus:outline-none focus:border-[#1A3A52] transition-colors"
                   style={mFont}
@@ -161,7 +206,7 @@ export default function ServiceModal({ action, defaultOpen = false }: Props) {
                 >
                   Annuler
                 </button>
-                <SubmitButton />
+                <SubmitButton mode={mode} />
               </div>
             </form>
           </div>

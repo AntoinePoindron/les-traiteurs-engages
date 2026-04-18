@@ -68,6 +68,30 @@ export async function deleteServiceAction(formData: FormData) {
   redirect("/client/team?tab=services");
 }
 
+export async function updateServiceAction(formData: FormData) {
+  const supabase = await createClient();
+  const companyId = await getCompanyId();
+  if (!companyId) return;
+
+  const serviceId = formData.get("service_id") as string;
+  if (!serviceId) return;
+
+  const name = (formData.get("name") as string)?.trim();
+  const description = (formData.get("description") as string)?.trim() || null;
+  const rawBudget = formData.get("annual_budget") as string;
+  const annual_budget = rawBudget ? parseFloat(rawBudget.replace(/\s/g, "").replace(",", ".")) : 0;
+
+  if (!name) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (supabase as any)
+    .from("company_services")
+    .update({ name, description, annual_budget })
+    .eq("id", serviceId)
+    .eq("company_id", companyId);
+  revalidatePath("/client/team");
+  redirect("/client/team?tab=services");
+}
+
 // ── Employees ──────────────────────────────────────────────────
 
 export async function createEmployeeAction(formData: FormData) {

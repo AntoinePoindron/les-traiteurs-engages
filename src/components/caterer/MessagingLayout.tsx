@@ -7,10 +7,14 @@ import {
   useMemo,
   useCallback,
 } from "react";
-import { Send, Paperclip, ChevronLeft, MessageSquare } from "lucide-react";
+import Link from "next/link";
+import { Send, Paperclip, ChevronLeft, MessageSquare, ChefHat, Building2, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Message } from "@/types/database";
 import type { PartnerProfile } from "@/app/(dashboard)/caterer/messages/page";
+
+type PartnerKind = "caterer" | "client" | null;
+type ViewerRole = "caterer" | "admin";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -20,6 +24,10 @@ type ThreadSummary = {
   partner_name: string;
   company_name: string;
   company_logo_url: string | null;
+  /** "caterer" if the partner is linked to a caterer, "client" if linked to a company, null for super admins */
+  partner_kind: PartnerKind;
+  /** caterer_id or company_id — used to link to the admin detail page */
+  partner_entity_id: string | null;
   last_message_body: string;
   last_message_at: string;
   unread_count: number;
@@ -102,12 +110,20 @@ function buildThreads(
         ? `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() ||
           "Inconnu"
         : "Inconnu";
+      const partnerKind: PartnerKind = profile?.caterer_id
+        ? "caterer"
+        : profile?.company_id
+          ? "client"
+          : null;
+      const partnerEntityId = profile?.caterer_id ?? profile?.company_id ?? null;
       return {
         thread_id,
         partner_id: data.partner_id,
         partner_name,
         company_name: profile?.companies?.name ?? profile?.caterers?.name ?? "—",
         company_logo_url: profile?.companies?.logo_url ?? profile?.caterers?.logo_url ?? null,
+        partner_kind: partnerKind,
+        partner_entity_id: partnerEntityId,
         last_message_body: data.lastMsg.body,
         last_message_at: data.lastMsg.created_at,
         unread_count: data.unread,
@@ -158,14 +174,44 @@ function InitialsAvatar({
   );
 }
 
+function KindBadge({ kind, size = "sm" }: { kind: PartnerKind; size?: "sm" | "md" }) {
+  if (!kind) return null;
+  const isCaterer = kind === "caterer";
+  const Icon = isCaterer ? ChefHat : Building2;
+  const label = isCaterer ? "Traiteur" : "Client";
+  const bg = isCaterer ? "#FEF3C7" : "#E0F2FE";
+  const fg = isCaterer ? "#92400E" : "#075985";
+  const iconSize = size === "md" ? 11 : 9;
+  const fontSize = size === "md" ? 11 : 10;
+  const padY = size === "md" ? "0.125rem" : "0.1rem";
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded px-1.5 font-bold shrink-0"
+      style={{
+        backgroundColor: bg,
+        color: fg,
+        fontFamily: "Marianne, system-ui, sans-serif",
+        fontSize,
+        paddingTop: padY,
+        paddingBottom: padY,
+      }}
+    >
+      <Icon size={iconSize} />
+      {label}
+    </span>
+  );
+}
+
 function ThreadItem({
   thread,
   isActive,
   onClick,
+  showKindBadge = false,
 }: {
   thread: ThreadSummary;
   isActive: boolean;
   onClick: () => void;
+  showKindBadge?: boolean;
 }) {
   return (
     <button
@@ -176,15 +222,18 @@ function ThreadItem({
       <InitialsAvatar name={thread.company_name} logoUrl={thread.company_logo_url} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
-          <p
-            className="text-sm font-bold text-black truncate"
-            style={{
-              fontFamily: "Marianne, system-ui, sans-serif",
-              fontVariationSettings: "'SOFT' 0, 'WONK' 1",
-            }}
-          >
-            {thread.company_name}
-          </p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p
+              className="text-sm font-bold text-black truncate"
+              style={{
+                fontFamily: "Marianne, system-ui, sans-serif",
+                fontVariationSettings: "'SOFT' 0, 'WONK' 1",
+              }}
+            >
+              {thread.company_name}
+            </p>
+            {showKindBadge && <KindBadge kind={thread.partner_kind} />}
+          </div>
           {thread.unread_count > 0 && (
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -276,6 +325,12 @@ interface MessagingLayoutProps {
   myUserId: string;
   myName: string;
   initialThreadId?: string | null;
+  /**
+   * "caterer" (default) for the caterer messaging view.
+   * "admin" enables admin-only features like "Voir le détail" links
+   * on the conversation header.
+   */
+  viewerRole?: ViewerRole;
 }
 
 export default function MessagingLayout({
@@ -283,6 +338,7 @@ export default function MessagingLayout({
   partnerProfiles,
   myUserId,
   initialThreadId,
+  viewerRole = "caterer",
 }: MessagingLayoutProps) {
   const supabase = useRef(createClient());
   const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
@@ -465,6 +521,7 @@ export default function MessagingLayout({
                 threadCount={threadCount}
                 selectedThreadId={selectedThreadId}
                 onSelect={handleSelectThread}
+                showKindBadge={viewerRole === "admin"}
               />
             </div>
 
@@ -490,20 +547,39 @@ export default function MessagingLayout({
                         <ChevronLeft size={20} />
                       </button>
                       <InitialsAvatar name={selectedThread.company_name} logoUrl={selectedThread.company_logo_url} size={56} />
-                      <div className="flex flex-col gap-0.5">
+                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p
+                            className="font-display font-bold text-xl text-black leading-tight truncate"
+                            style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                          >
+                            {selectedThread.company_name}
+                          </p>
+                          {viewerRole === "admin" && (
+                            <KindBadge kind={selectedThread.partner_kind} size="md" />
+                          )}
+                        </div>
                         <p
-                          className="font-display font-bold text-xl text-black leading-tight"
-                          style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                        >
-                          {selectedThread.company_name}
-                        </p>
-                        <p
-                          className="text-sm text-black"
+                          className="text-sm text-black truncate"
                           style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                         >
                           {selectedThread.partner_name}
                         </p>
                       </div>
+                      {viewerRole === "admin" && selectedThread.partner_entity_id && selectedThread.partner_kind && (
+                        <Link
+                          href={
+                            selectedThread.partner_kind === "caterer"
+                              ? `/admin/caterers/${selectedThread.partner_entity_id}`
+                              : `/admin/companies/${selectedThread.partner_entity_id}`
+                          }
+                          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F0F4F8] transition-colors"
+                          style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                        >
+                          <ExternalLink size={12} />
+                          Voir le détail
+                        </Link>
+                      )}
                     </div>
 
                     {/* Tabs */}
@@ -655,11 +731,13 @@ function ConversationListInner({
   threadCount,
   selectedThreadId,
   onSelect,
+  showKindBadge = false,
 }: {
   threads: ThreadSummary[];
   threadCount: number;
   selectedThreadId: string | null;
   onSelect: (id: string) => void;
+  showKindBadge?: boolean;
 }) {
   return (
     <>
@@ -686,6 +764,7 @@ function ConversationListInner({
               thread={thread}
               isActive={thread.thread_id === selectedThreadId}
               onClick={() => onSelect(thread.thread_id)}
+              showKindBadge={showKindBadge}
             />
           ))
         )}

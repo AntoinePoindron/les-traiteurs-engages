@@ -6,6 +6,8 @@ export type PartnerProfile = {
   id: string;
   first_name: string | null;
   last_name: string | null;
+  caterer_id: string | null;
+  company_id: string | null;
   companies: { name: string; logo_url: string | null } | null;
   caterers: { name: string; logo_url: string | null } | null;
 };
@@ -57,7 +59,7 @@ export default async function CatererMessagesPage({ searchParams }: PageProps) {
   if (partnerIds.length > 0) {
     const { data: profilesData } = await supabase
       .from("users")
-      .select("id, first_name, last_name, companies(name, logo_url), caterers!caterer_id(name, logo_url)")
+      .select("id, first_name, last_name, caterer_id, company_id, companies(name, logo_url), caterers!caterer_id(name, logo_url)")
       .in("id", partnerIds);
 
     partnerProfiles = (profilesData ?? []) as unknown as PartnerProfile[];

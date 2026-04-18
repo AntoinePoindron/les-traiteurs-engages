@@ -222,24 +222,24 @@ function ThreadItem({
       <InitialsAvatar name={thread.company_name} logoUrl={thread.company_logo_url} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p
-              className="text-sm font-bold text-black truncate"
-              style={{
-                fontFamily: "Marianne, system-ui, sans-serif",
-                fontVariationSettings: "'SOFT' 0, 'WONK' 1",
-              }}
-            >
-              {thread.company_name}
-            </p>
+          <p
+            className="text-sm font-bold text-black truncate min-w-0"
+            style={{
+              fontFamily: "Marianne, system-ui, sans-serif",
+              fontVariationSettings: "'SOFT' 0, 'WONK' 1",
+            }}
+          >
+            {thread.company_name}
+          </p>
+          <div className="flex items-center gap-1.5 shrink-0">
             {showKindBadge && <KindBadge kind={thread.partner_kind} />}
+            {thread.unread_count > 0 && (
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: "#FF5455" }}
+              />
+            )}
           </div>
-          {thread.unread_count > 0 && (
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: "#FF5455" }}
-            />
-          )}
         </div>
         <p
           className="text-[10px] mb-1"

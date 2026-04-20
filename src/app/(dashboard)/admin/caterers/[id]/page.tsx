@@ -279,6 +279,60 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
                   </div>
                 </Section>
               )}
+
+              {/* Actions admin */}
+              <Section title="Actions admin">
+                {caterer.is_validated ? (
+                  <>
+                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
+                      <CheckCircle size={15} style={{ color: "#16A34A" }} />
+                      <p className="text-xs font-bold" style={{ color: "#16A34A", ...mFont }}>
+                        Ce compte est validé
+                      </p>
+                    </div>
+                    <form action={rejectCatererAction}>
+                      <input type="hidden" name="caterer_id" value={caterer.id} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
+                        style={mFont}
+                      >
+                        Désactiver ce compte
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
+                      <Clock size={15} style={{ color: "#B45309" }} />
+                      <p className="text-xs font-bold" style={{ color: "#B45309", ...mFont }}>
+                        En attente de validation
+                      </p>
+                    </div>
+                    <form action={validateCatererAction}>
+                      <input type="hidden" name="caterer_id" value={caterer.id} />
+                      <button
+                        type="submit"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: "#1A3A52", ...mFont }}
+                      >
+                        <CheckCircle size={16} />
+                        Valider ce compte
+                      </button>
+                    </form>
+                    <form action={rejectCatererAction}>
+                      <input type="hidden" name="caterer_id" value={caterer.id} />
+                      <button
+                        type="submit"
+                        className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
+                        style={mFont}
+                      >
+                        Refuser ce compte
+                      </button>
+                    </form>
+                  </>
+                )}
+              </Section>
             </div>
 
             {/* ══ Colonne droite : Activité ══ */}
@@ -334,60 +388,6 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
                   </div>
                 </Section>
               )}
-
-              {/* Actions admin */}
-              <Section title="Actions admin">
-                {caterer.is_validated ? (
-                  <>
-                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
-                      <CheckCircle size={15} style={{ color: "#16A34A" }} />
-                      <p className="text-xs font-bold" style={{ color: "#16A34A", ...mFont }}>
-                        Ce compte est validé
-                      </p>
-                    </div>
-                    <form action={rejectCatererAction}>
-                      <input type="hidden" name="caterer_id" value={caterer.id} />
-                      <button
-                        type="submit"
-                        className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
-                        style={mFont}
-                      >
-                        Désactiver ce compte
-                      </button>
-                    </form>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
-                      <Clock size={15} style={{ color: "#B45309" }} />
-                      <p className="text-xs font-bold" style={{ color: "#B45309", ...mFont }}>
-                        En attente de validation
-                      </p>
-                    </div>
-                    <form action={validateCatererAction}>
-                      <input type="hidden" name="caterer_id" value={caterer.id} />
-                      <button
-                        type="submit"
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90"
-                        style={{ backgroundColor: "#1A3A52", ...mFont }}
-                      >
-                        <CheckCircle size={16} />
-                        Valider ce compte
-                      </button>
-                    </form>
-                    <form action={rejectCatererAction}>
-                      <input type="hidden" name="caterer_id" value={caterer.id} />
-                      <button
-                        type="submit"
-                        className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
-                        style={mFont}
-                      >
-                        Refuser ce compte
-                      </button>
-                    </form>
-                  </>
-                )}
-              </Section>
             </div>
           </div>
         </div>

@@ -178,38 +178,78 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
           {/* Grid: infos à gauche, activité à droite */}
           <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
 
-            {/* ── Colonne gauche : Infos ── */}
-            <Section title="Informations">
-              {company.oeth_eligible && (
-                <div className="flex flex-wrap gap-1.5">
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
-                    style={{ backgroundColor: "#DCFCE7", color: "#16A34A", ...mFont }}
-                  >
-                    OETH éligible
-                  </span>
-                </div>
-              )}
+            {/* ── Colonne gauche : Infos + Contact ── */}
+            <div className="flex flex-col gap-6">
 
-              <div className="flex flex-col gap-3 pt-3 border-t border-[#F3F4F6]">
-                <InfoRow icon={Hash} label="SIRET" value={company.siret} />
-                <InfoRow
-                  icon={MapPin}
-                  label="Adresse"
-                  value={(company.address || company.city)
-                    ? [
-                        company.address,
-                        [company.zip_code, company.city].filter(Boolean).join(" "),
-                      ].filter(Boolean).join(" · ")
-                    : null}
-                />
-                <InfoRow
-                  icon={Euro}
-                  label="Budget annuel"
-                  value={company.budget_annual != null ? `${formatMoney(company.budget_annual)} €` : null}
-                />
-              </div>
-            </Section>
+              {/* Informations */}
+              <Section title="Informations">
+                {company.oeth_eligible && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
+                      style={{ backgroundColor: "#DCFCE7", color: "#16A34A", ...mFont }}
+                    >
+                      OETH éligible
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 pt-3 border-t border-[#F3F4F6]">
+                  <InfoRow icon={Hash} label="SIRET" value={company.siret} />
+                  <InfoRow
+                    icon={MapPin}
+                    label="Adresse"
+                    value={(company.address || company.city)
+                      ? [
+                          company.address,
+                          [company.zip_code, company.city].filter(Boolean).join(" "),
+                        ].filter(Boolean).join(" · ")
+                      : null}
+                  />
+                  <InfoRow
+                    icon={Euro}
+                    label="Budget annuel"
+                    value={company.budget_annual != null ? `${formatMoney(company.budget_annual)} €` : null}
+                  />
+                </div>
+              </Section>
+
+              {/* Contact(s) — les admins client de la structure */}
+              {(() => {
+                const adminContacts = users.filter((u) => u.role === "client_admin");
+                if (adminContacts.length === 0) return null;
+                return (
+                  <Section title={adminContacts.length > 1 ? `Contacts (${adminContacts.length})` : "Contact"}>
+                    <div className="flex flex-col divide-y divide-[#F3F4F6]">
+                      {adminContacts.map((c) => {
+                        const name =
+                          `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.email;
+                        const initial = name.slice(0, 1).toUpperCase();
+                        return (
+                          <div key={c.id} className="flex items-center justify-between py-2.5 gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-white text-[10px] font-bold"
+                                style={{ backgroundColor: "#1A3A52", ...mFont }}
+                              >
+                                {initial}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <p className="text-sm font-bold text-black truncate" style={mFont}>{name}</p>
+                                <p className="text-xs text-[#6B7280] truncate" style={mFont}>{c.email}</p>
+                              </div>
+                            </div>
+                            {c.id !== adminUserId && (
+                              <MessageUserButton recipientUserId={c.id} variant="icon" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
+                );
+              })()}
+            </div>
 
             {/* ── Colonne droite : Activité ── */}
             <div className="flex flex-col gap-6">

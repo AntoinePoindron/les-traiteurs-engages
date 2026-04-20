@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { Section, InfoRow, KpiCard } from "@/components/admin/DetailPageAtoms";
+import MessageUserButton from "@/components/admin/MessageUserButton";
 import Link from "next/link";
 import {
   Building2, MapPin, FileText, ShoppingBag, Users, Euro,
-  Mail, Briefcase, Calendar, ChevronRight, Hash,
+  Mail, Briefcase, ChevronRight, Hash,
 } from "lucide-react";
 import type { QuoteRequestStatus, UserRole } from "@/types/database";
 
@@ -137,6 +139,10 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
   const formatMoney = (n: number) =>
     n.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
+  // Current admin (for excluding from message buttons)
+  const { data: { user: adminUser } } = await supabase.auth.getUser();
+  const adminUserId = adminUser!.id;
+
   return (
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
       <div className="pt-[54px] px-6 pb-12">
@@ -163,9 +169,9 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
               >
                 {company.name}
               </h1>
-              {company.city && (
-                <p className="text-sm text-[#6B7280] mt-1" style={mFont}>{company.city}</p>
-              )}
+              <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
+                {[company.city, `Inscrite le ${formatDate(company.created_at)}`].filter(Boolean).join(" · ")}
+              </p>
             </div>
           </div>
 
@@ -173,50 +179,37 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
           <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
 
             {/* ── Colonne gauche : Infos ── */}
-            <div className="bg-white rounded-lg p-5 flex flex-col gap-5">
-              <div className="flex flex-col gap-3">
-                <p className="font-display font-bold text-lg text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Informations
-                </p>
-
-                {company.oeth_eligible && (
+            <Section title="Informations">
+              {company.oeth_eligible && (
+                <div className="flex flex-wrap gap-1.5">
                   <span
-                    className="inline-flex items-center self-start gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
                     style={{ backgroundColor: "#DCFCE7", color: "#16A34A", ...mFont }}
                   >
                     OETH éligible
                   </span>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="flex flex-col gap-3 pt-3 border-t border-[#F3F4F6]">
-                {company.siret && (
-                  <InfoRow icon={Hash} label="SIRET" value={company.siret} />
-                )}
-                {(company.address || company.city) && (
-                  <InfoRow
-                    icon={MapPin}
-                    label="Adresse"
-                    value={[
-                      company.address,
-                      [company.zip_code, company.city].filter(Boolean).join(" "),
-                    ].filter(Boolean).join(" · ")}
-                  />
-                )}
-                {company.budget_annual != null && (
-                  <InfoRow
-                    icon={Euro}
-                    label="Budget annuel"
-                    value={`${formatMoney(company.budget_annual)} €`}
-                  />
-                )}
+                <InfoRow icon={Hash} label="SIRET" value={company.siret} />
                 <InfoRow
-                  icon={Calendar}
-                  label="Inscrite le"
-                  value={formatDate(company.created_at)}
+                  icon={MapPin}
+                  label="Adresse"
+                  value={(company.address || company.city)
+                    ? [
+                        company.address,
+                        [company.zip_code, company.city].filter(Boolean).join(" "),
+                      ].filter(Boolean).join(" · ")
+                    : null}
+                />
+                <InfoRow
+                  icon={Euro}
+                  label="Budget annuel"
+                  value={company.budget_annual != null ? `${formatMoney(company.budget_annual)} €` : null}
                 />
               </div>
-            </div>
+            </Section>
 
             {/* ── Colonne droite : Activité ── */}
             <div className="flex flex-col gap-6">
@@ -271,16 +264,21 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
                               <p className="text-xs text-[#6B7280] truncate" style={mFont}>{u.email}</p>
                             </div>
                           </div>
-                          <span
-                            className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
-                            style={{
-                              backgroundColor: u.role === "client_admin" ? "#E0F2FE" : "#F0F4F8",
-                              color: u.role === "client_admin" ? "#075985" : "#1A3A52",
-                              ...mFont,
-                            }}
-                          >
-                            {ROLE_LABELS[u.role]}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded"
+                              style={{
+                                backgroundColor: u.role === "client_admin" ? "#E0F2FE" : "#F0F4F8",
+                                color: u.role === "client_admin" ? "#075985" : "#1A3A52",
+                                ...mFont,
+                              }}
+                            >
+                              {ROLE_LABELS[u.role]}
+                            </span>
+                            {u.id !== adminUserId && (
+                              <MessageUserButton recipientUserId={u.id} variant="icon" />
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -353,46 +351,3 @@ export default async function AdminCompanyDetailPage({ params }: PageProps) {
   );
 }
 
-// ── Atoms ────────────────────────────────────────────────────────
-
-function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-3">
-      <Icon size={14} className="text-[#9CA3AF] mt-0.5 shrink-0" />
-      <div className="flex flex-col min-w-0">
-        <p className="text-[11px] text-[#9CA3AF]" style={mFont}>{label}</p>
-        <p className="text-sm font-bold text-black break-words" style={mFont}>{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function KpiCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
-  return (
-    <div className="bg-white rounded-lg p-4 flex flex-col gap-2">
-      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#F0F4F7" }}>
-        <Icon size={14} style={{ color: "#1A3A52" }} />
-      </div>
-      <div>
-        <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-          {value}
-        </p>
-        <p className="text-[11px] text-[#6B7280] mt-0.5" style={mFont}>{label}</p>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
-      <p
-        className="font-display font-bold text-lg text-black"
-        style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-      >
-        {title}
-      </p>
-      {children}
-    </div>
-  );
-}

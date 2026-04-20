@@ -16,6 +16,22 @@ import type { PartnerProfile } from "@/app/(dashboard)/caterer/messages/page";
 type PartnerKind = "caterer" | "client" | null;
 type ViewerRole = "caterer" | "admin";
 
+/**
+ * Description d'un thread qui n'existe pas encore en base. Utilisé par la
+ * page admin/messages pour pré-sélectionner une conversation avec un user
+ * qu'on n'a jamais messagé (clic sur "Envoyer un message" sur une fiche
+ * traiteur / entreprise).
+ */
+export type PendingThread = {
+  threadId: string;
+  partnerId: string;
+  partnerName: string;
+  companyName: string;
+  companyLogoUrl: string | null;
+  partnerKind: PartnerKind;
+  partnerEntityId: string | null;
+};
+
 // ── Types ─────────────────────────────────────────────────────
 
 type ThreadSummary = {
@@ -331,6 +347,12 @@ interface MessagingLayoutProps {
    * on the conversation header.
    */
   viewerRole?: ViewerRole;
+  /**
+   * Thread "fantôme" à afficher quand aucun message n'a encore été
+   * échangé avec le partenaire. Utilisé par la page admin/messages avec
+   * le query param `?to=userId`.
+   */
+  pendingThread?: PendingThread | null;
 }
 
 export default function MessagingLayout({
@@ -339,6 +361,7 @@ export default function MessagingLayout({
   myUserId,
   initialThreadId,
   viewerRole = "caterer",
+  pendingThread = null,
 }: MessagingLayoutProps) {
   const supabase = useRef(createClient());
   const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
@@ -367,6 +390,12 @@ export default function MessagingLayout({
   );
 
   const selectedThread = threads.find((t) => t.thread_id === selectedThreadId);
+  // Pending thread is active only if no real thread with the same id exists
+  // (once the first message is sent, the pending thread "graduates" to real).
+  const activePendingThread =
+    pendingThread && pendingThread.threadId === selectedThreadId && !selectedThread
+      ? pendingThread
+      : null;
 
   // Messages for the active thread, chronological
   const activeMessages = useMemo(
@@ -445,7 +474,15 @@ export default function MessagingLayout({
   }
 
   async function handleSendMessage() {
-    if (!messageInput.trim() || !selectedThread || sending) return;
+    const target = selectedThread ?? activePendingThread;
+    if (!messageInput.trim() || !target || sending) return;
+
+    // Normalize target fields depending on whether it's a real or pending thread
+    const threadId   = "thread_id" in target ? target.thread_id : target.threadId;
+    const recipientId = "partner_id" in target ? target.partner_id : target.partnerId;
+    const quoteRequestId = "quote_request_id" in target ? target.quote_request_id : null;
+    const orderId        = "order_id" in target ? target.order_id : null;
+
     const body = messageInput.trim();
     setMessageInput("");
     setSending(true);
@@ -453,11 +490,11 @@ export default function MessagingLayout({
     // Optimistic insert
     const optimistic: Message = {
       id: crypto.randomUUID(),
-      thread_id: selectedThread.thread_id,
+      thread_id: threadId,
       sender_id: myUserId,
-      recipient_id: selectedThread.partner_id,
-      quote_request_id: selectedThread.quote_request_id,
-      order_id: selectedThread.order_id,
+      recipient_id: recipientId,
+      quote_request_id: quoteRequestId,
+      order_id: orderId,
       body,
       is_read: false,
       created_at: new Date().toISOString(),
@@ -466,11 +503,11 @@ export default function MessagingLayout({
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.current as any).from("messages").insert({
-      thread_id: selectedThread.thread_id,
+      thread_id: threadId,
       sender_id: myUserId,
-      recipient_id: selectedThread.partner_id,
-      quote_request_id: selectedThread.quote_request_id,
-      order_id: selectedThread.order_id,
+      recipient_id: recipientId,
+      quote_request_id: quoteRequestId,
+      order_id: orderId,
       body,
       is_read: false,
     });
@@ -531,7 +568,14 @@ export default function MessagingLayout({
                 mobileView === "list" ? "hidden md:block" : "block"
               }`}
             >
-              {selectedThread ? (
+              {(selectedThread || activePendingThread) ? (
+                (() => {
+                  const companyName     = selectedThread?.company_name     ?? activePendingThread!.companyName;
+                  const companyLogoUrl  = selectedThread?.company_logo_url ?? activePendingThread!.companyLogoUrl;
+                  const partnerName     = selectedThread?.partner_name     ?? activePendingThread!.partnerName;
+                  const partnerKind     = selectedThread?.partner_kind     ?? activePendingThread!.partnerKind;
+                  const partnerEntityId = selectedThread?.partner_entity_id ?? activePendingThread!.partnerEntityId;
+                  return (
                 <div
                   className="bg-white rounded-lg flex flex-col"
                   style={{ height: "calc(100vh - 160px)", minHeight: 520 }}
@@ -546,32 +590,32 @@ export default function MessagingLayout({
                       >
                         <ChevronLeft size={20} />
                       </button>
-                      <InitialsAvatar name={selectedThread.company_name} logoUrl={selectedThread.company_logo_url} size={56} />
+                      <InitialsAvatar name={companyName} logoUrl={companyLogoUrl} size={56} />
                       <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p
                             className="font-display font-bold text-xl text-black leading-tight truncate"
                             style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                           >
-                            {selectedThread.company_name}
+                            {companyName}
                           </p>
                           {viewerRole === "admin" && (
-                            <KindBadge kind={selectedThread.partner_kind} size="md" />
+                            <KindBadge kind={partnerKind} size="md" />
                           )}
                         </div>
                         <p
                           className="text-sm text-black truncate"
                           style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
                         >
-                          {selectedThread.partner_name}
+                          {partnerName}
                         </p>
                       </div>
-                      {viewerRole === "admin" && selectedThread.partner_entity_id && selectedThread.partner_kind && (
+                      {viewerRole === "admin" && partnerEntityId && partnerKind && (
                         <Link
                           href={
-                            selectedThread.partner_kind === "caterer"
-                              ? `/admin/caterers/${selectedThread.partner_entity_id}`
-                              : `/admin/companies/${selectedThread.partner_entity_id}`
+                            partnerKind === "caterer"
+                              ? `/admin/caterers/${partnerEntityId}`
+                              : `/admin/companies/${partnerEntityId}`
                           }
                           className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F0F4F8] transition-colors"
                           style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
@@ -625,8 +669,8 @@ export default function MessagingLayout({
                             key={msg.id}
                             message={msg}
                             isFromMe={msg.sender_id === myUserId}
-                            partnerName={selectedThread.company_name}
-                            partnerLogoUrl={selectedThread.company_logo_url}
+                            partnerName={companyName}
+                            partnerLogoUrl={companyLogoUrl}
                           />
                         ))
                       )
@@ -689,6 +733,8 @@ export default function MessagingLayout({
                     </div>
                   </div>
                 </div>
+                  );
+                })()
               ) : (
                 // Empty state
                 <div

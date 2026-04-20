@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import BackButton from "@/components/ui/BackButton";
 import { Section, InfoRow, KpiCard } from "@/components/admin/DetailPageAtoms";
 import MessageUserButton from "@/components/admin/MessageUserButton";
@@ -7,7 +8,7 @@ import type { Caterer, ServiceTypeConfig } from "@/types/database";
 import { validateCatererAction, rejectCatererAction } from "../actions";
 import {
   MapPin, Truck, Users, CheckCircle, Clock, ChefHat,
-  Euro, Percent, FileText, ShoppingBag, Hash, Utensils,
+  Euro, Percent, FileText, ShoppingBag, Hash, Utensils, ExternalLink,
 } from "lucide-react";
 
 // Never serve from cache — orders / requests change continuously.
@@ -153,28 +154,40 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
           <BackButton label="Retour" />
 
           {/* ── Header ── */}
-          <div className="flex items-center gap-4">
-            {caterer.logo_url ? (
-              <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm flex items-center justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={caterer.logo_url} alt="" className="w-full h-full object-contain p-1" />
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              {caterer.logo_url ? (
+                <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-white shadow-sm flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={caterer.logo_url} alt="" className="w-full h-full object-contain p-1" />
+                </div>
+              ) : (
+                <div className="w-14 h-14 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#E5EDF2" }}>
+                  <ChefHat size={22} style={{ color: "#1A3A52" }} />
+                </div>
+              )}
+              <div className="min-w-0">
+                <h1
+                  className="font-display font-bold text-4xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  {caterer.name}
+                </h1>
+                <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
+                  {[caterer.city, `Inscrit le ${formatDate(caterer.created_at)}`].filter(Boolean).join(" · ")}
+                </p>
               </div>
-            ) : (
-              <div className="w-14 h-14 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#E5EDF2" }}>
-                <ChefHat size={22} style={{ color: "#1A3A52" }} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <h1
-                className="font-display font-bold text-4xl text-black"
-                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-              >
-                {caterer.name}
-              </h1>
-              <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
-                {[caterer.city, `Inscrit le ${formatDate(caterer.created_at)}`].filter(Boolean).join(" · ")}
-              </p>
             </div>
+            <Link
+              href={`/client/caterers/${caterer.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F0F4F8] transition-colors"
+              style={mFont}
+            >
+              <ExternalLink size={12} />
+              Voir la fiche publique
+            </Link>
           </div>
 
           {/* ── Grid ── */}
@@ -283,24 +296,16 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
               {/* Actions admin */}
               <Section title="Actions admin">
                 {caterer.is_validated ? (
-                  <>
-                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
-                      <CheckCircle size={15} style={{ color: "#16A34A" }} />
-                      <p className="text-xs font-bold" style={{ color: "#16A34A", ...mFont }}>
-                        Ce compte est validé
-                      </p>
-                    </div>
-                    <form action={rejectCatererAction}>
-                      <input type="hidden" name="caterer_id" value={caterer.id} />
-                      <button
-                        type="submit"
-                        className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
-                        style={mFont}
-                      >
-                        Désactiver ce compte
-                      </button>
-                    </form>
-                  </>
+                  <form action={rejectCatererAction}>
+                    <input type="hidden" name="caterer_id" value={caterer.id} />
+                    <button
+                      type="submit"
+                      className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#FEE2E2] hover:bg-[#FEF2F2] transition-colors"
+                      style={mFont}
+                    >
+                      Désactiver ce compte
+                    </button>
+                  </form>
                 ) : (
                   <>
                     <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>

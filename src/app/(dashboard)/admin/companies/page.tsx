@@ -77,7 +77,7 @@ export default async function AdminCompaniesPage({ searchParams }: PageProps) {
             className="font-display font-bold text-4xl text-black"
             style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
           >
-            Entreprises
+            Clients
           </h1>
 
           {/* Tabs */}
@@ -104,17 +104,17 @@ export default async function AdminCompaniesPage({ searchParams }: PageProps) {
           {/* Liste */}
           <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
             <p className="text-xs font-bold text-black" style={mFont}>
-              {filtered.length} entreprise{filtered.length !== 1 ? "s" : ""}
+              {filtered.length} client{filtered.length !== 1 ? "s" : ""}
             </p>
 
             {filtered.length === 0 ? (
               <div className="py-12 text-center">
                 <p className="text-sm text-[#6B7280]" style={mFont}>
                   {activeFilter === "active"
-                    ? "Aucune entreprise avec une activité en cours."
+                    ? "Aucun client avec une activité en cours."
                     : activeFilter === "inactive"
-                      ? "Toutes les entreprises ont au moins un utilisateur ou une demande."
-                      : "Aucune entreprise enregistrée."}
+                      ? "Tous les clients ont au moins un utilisateur ou une demande."
+                      : "Aucun client enregistré."}
                 </p>
               </div>
             ) : (

@@ -104,7 +104,7 @@ export default async function AdminDashboardPage() {
             />
             <KpiCard
               icon={Building2}
-              label="Entreprises"
+              label="Clients"
               value={activeCompanies ?? 0}
             />
             <KpiCard

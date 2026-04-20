@@ -237,7 +237,7 @@ export default async function AdminStatsPage() {
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <KpiCard
               icon={Building2}
-              label="Entreprises"
+              label="Clients"
               value={String(companiesTotal)}
               subtitle={`${userRoleCounts.client_admin ?? 0} admin + ${userRoleCounts.client_user ?? 0} collab.`}
             />
@@ -326,7 +326,7 @@ export default async function AdminStatsPage() {
               )}
             </Section>
 
-            <Section title="Top 5 entreprises">
+            <Section title="Top 5 clients">
               {topCompanies.length === 0 ? (
                 <p className="text-sm text-[#6B7280] py-4 text-center" style={mFont}>
                   Pas encore de dépenses confirmées.

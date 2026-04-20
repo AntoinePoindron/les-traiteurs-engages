@@ -69,6 +69,7 @@ const adminNav: NavItem[] = [
   { label: "Clients",         href: "/admin/companies",     icon: Building2 },
   { label: "Messagerie",      href: "/admin/messages",      icon: MessageSquare },
   { label: "Commandes",       href: "/admin/orders",        icon: ShoppingBag },
+  { label: "Paiements",       href: "/admin/payments",      icon: CreditCard },
   { label: "Facturation",     href: "/admin/invoices",      icon: Receipt },
   { label: "Statistiques",    href: "/admin/stats",         icon: BarChart2 },
   { label: "Paramètres",      href: "/admin/settings",      icon: Settings },

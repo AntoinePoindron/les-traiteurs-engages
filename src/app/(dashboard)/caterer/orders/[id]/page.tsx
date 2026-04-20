@@ -302,9 +302,63 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
 
             </div>
 
-            {/* ── Colonne droite : carte client + panel action ── */}
+            {/* ── Colonne droite : actions commande + client + détails événement ── */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
+              {/* Actions commande : CTA avancement + facture — concerne l'objet */}
+              {(transition || (order.status === "delivered" && !invoice) || invoice) && (
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  {invoice && (
+                    <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-black" style={mFont}>Facture</p>
+                        <StatusBadge
+                          variant={invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "disputed" : "invoiced"}
+                          customLabel={invoice.status === "paid" ? "Payée" : invoice.status === "overdue" ? "En retard" : "En attente"}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {invoice.esat_invoice_ref && (
+                          <Row label="Référence" value={invoice.esat_invoice_ref} />
+                        )}
+                        <Row label="Montant HT"  value={fmt(invoice.amount_ht)} />
+                        <Row label="Montant TTC" value={fmt(invoice.amount_ttc)} />
+                        {invoice.issued_at && (
+                          <Row label="Émise le"  value={fmtDate(invoice.issued_at)} />
+                        )}
+                        {invoice.due_at && (
+                          <Row label="Échéance"  value={fmtDate(invoice.due_at)} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {transition ? (
+                    <form action={advanceStatus}>
+                      <input type="hidden" name="orderId" value={order.id} />
+                      <input type="hidden" name="nextStatus" value={transition.next} />
+                      <button
+                        type="submit"
+                        className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity cursor-pointer"
+                        style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                      >
+                        {transition.label}
+                      </button>
+                    </form>
+                  ) : order.status === "delivered" && !invoice ? (
+                    <Link
+                      href={`/caterer/orders/${order.id}/invoice`}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                      style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                    >
+                      <FileText size={13} />
+                      Créer la facture
+                    </Link>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Carte client */}
               <ContactCard
                 entityType="client"
                 entityName={qr.companies?.name ?? null}
@@ -319,95 +373,40 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 messagesHref={threadId ? `/caterer/messages?thread=${threadId}` : "/caterer/messages"}
               />
 
+              {/* Détails événement & livraison — infos de contexte */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
-
-              {/* Facture (si créée) — fond beige, juste sous le client */}
-              {invoice && (
-                <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-black" style={mFont}>Facture</p>
-                    <StatusBadge
-                      variant={invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "disputed" : "invoiced"}
-                      customLabel={invoice.status === "paid" ? "Payée" : invoice.status === "overdue" ? "En retard" : "En attente"}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {invoice.esat_invoice_ref && (
-                      <Row label="Référence" value={invoice.esat_invoice_ref} />
-                    )}
-                    <Row label="Montant HT"  value={fmt(invoice.amount_ht)} />
-                    <Row label="Montant TTC" value={fmt(invoice.amount_ttc)} />
-                    {invoice.issued_at && (
-                      <Row label="Émise le"  value={fmtDate(invoice.issued_at)} />
-                    )}
-                    {invoice.due_at && (
-                      <Row label="Échéance"  value={fmtDate(invoice.due_at)} />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* CTA avancement / création facture (style harmonisé avec le client) */}
-              {transition ? (
-                <form action={advanceStatus}>
-                  <input type="hidden" name="orderId" value={order.id} />
-                  <input type="hidden" name="nextStatus" value={transition.next} />
-                  <button
-                    type="submit"
-                    className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity cursor-pointer"
-                    style={{ ...mFont, backgroundColor: "#1A3A52" }}
-                  >
-                    {transition.label}
-                  </button>
-                </form>
-              ) : order.status === "delivered" && !invoice ? (
-                <Link
-                  href={`/caterer/orders/${order.id}/invoice`}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
-                  style={{ ...mFont, backgroundColor: "#1A3A52" }}
-                >
-                  <FileText size={13} />
-                  Créer la facture
-                </Link>
-              ) : null}
-
-              <div className="border-t border-[#f2f2f2]" />
-
-              {/* Événement */}
-              <div className="flex flex-col gap-4">
-                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Événement
-                </p>
-                <div className="flex flex-col gap-3">
-                  <Row label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
-                  <Row label="Date" value={fmtDate(qr.event_date)} />
-                  {(qr.event_start_time || qr.event_end_time) && (
-                    <Row label="Horaires" value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")} />
-                  )}
-                  <Row label="Lieu" value={qr.event_address ?? order.delivery_address} />
-                  <Row label="Convives" value={`${qr.guest_count} personnes`} />
-                </div>
-                {qr.description && (
-                  <p className="text-xs text-[#6B7280] italic leading-relaxed" style={mFont}>
-                    &ldquo;{qr.description}&rdquo;
+                <div className="flex flex-col gap-4">
+                  <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Événement
                   </p>
-                )}
-              </div>
-
-              <div className="border-t border-[#f2f2f2]" />
-
-              {/* Livraison */}
-              <div className="flex flex-col gap-4">
-                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Livraison
-                </p>
-                <div className="flex flex-col gap-3">
-                  <Row label="Date" value={fmtDate(order.delivery_date)} />
-                  <Row label="Adresse" value={order.delivery_address} />
-                  {order.notes && <Row label="Notes" value={order.notes} />}
+                  <div className="flex flex-col gap-3">
+                    <Row label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
+                    <Row label="Date" value={fmtDate(qr.event_date)} />
+                    {(qr.event_start_time || qr.event_end_time) && (
+                      <Row label="Horaires" value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")} />
+                    )}
+                    <Row label="Lieu" value={qr.event_address ?? order.delivery_address} />
+                    <Row label="Convives" value={`${qr.guest_count} personnes`} />
+                  </div>
+                  {qr.description && (
+                    <p className="text-xs text-[#6B7280] italic leading-relaxed" style={mFont}>
+                      &ldquo;{qr.description}&rdquo;
+                    </p>
+                  )}
                 </div>
-              </div>
 
+                <div className="border-t border-[#f2f2f2]" />
+
+                <div className="flex flex-col gap-4">
+                  <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Livraison
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <Row label="Date" value={fmtDate(order.delivery_date)} />
+                    <Row label="Adresse" value={order.delivery_address} />
+                    {order.notes && <Row label="Notes" value={order.notes} />}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

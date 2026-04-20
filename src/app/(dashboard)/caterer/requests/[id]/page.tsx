@@ -416,19 +416,8 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
             {/* ── Right : client card + action panel ── */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
-              <ContactCard
-                entityType="client"
-                entityName={companyName ?? null}
-                entityLogoUrl={request.companies?.logo_url ?? null}
-                contactUserId={clientUser?.id ?? null}
-                contactFirstName={clientUser?.first_name ?? null}
-                contactLastName={clientUser?.last_name ?? null}
-                contactEmail={clientUser?.email ?? null}
-                myUserId={user!.id}
-                quoteRequestId={id}
-                messagesHref="/caterer/messages"
-              />
 
+              {/* Bloc demande : budget + CTAs — concerne l'objet */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
               {/* Budget */}
               <div className="flex flex-col gap-4">
@@ -579,9 +568,24 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                 );
               })()}
 
-              {/* Historique avec ce client */}
-              <>
-                <Divider />
+              </div>
+
+              {/* Carte client */}
+              <ContactCard
+                entityType="client"
+                entityName={companyName ?? null}
+                entityLogoUrl={request.companies?.logo_url ?? null}
+                contactUserId={clientUser?.id ?? null}
+                contactFirstName={clientUser?.first_name ?? null}
+                contactLastName={clientUser?.last_name ?? null}
+                contactEmail={clientUser?.email ?? null}
+                myUserId={user!.id}
+                quoteRequestId={id}
+                messagesHref="/caterer/messages"
+              />
+
+              {/* Historique avec ce client — contexte client */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
                 <div className="flex flex-col gap-6">
                   <p
                     className="font-display font-bold text-xl text-black"
@@ -640,7 +644,6 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     </div>
                   )}
                 </div>
-              </>
               </div>
             </div>
           </div>

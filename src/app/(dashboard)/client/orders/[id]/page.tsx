@@ -230,58 +230,6 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
             </div>
           )}
 
-          {/* Bloc paiement */}
-          {(isOrderPayable || hasSucceededPayment) && (
-            <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <CreditCard size={16} style={{ color: "#1A3A52" }} />
-                <p className="text-sm font-bold text-black" style={mFont}>Paiement</p>
-              </div>
-
-              {hasSucceededPayment ? (
-                <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
-                  <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-sm font-bold" style={{ color: "#16A34A", ...mFont }}>
-                      Règlement effectué
-                    </p>
-                    <p className="text-xs text-[#6B7280]" style={mFont}>
-                      Merci ! Le traiteur a été crédité.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {hasPendingPayment && (
-                    <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
-                      <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
-                      <div className="flex flex-col gap-1 min-w-0">
-                        <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
-                          Tentative de paiement non finalisée
-                        </p>
-                        <p className="text-xs text-[#6B7280]" style={mFont}>
-                          Votre précédente tentative n&apos;a pas été menée au bout. Si vous venez de payer
-                          et que rien ne s&apos;est mis à jour, cliquez sur &quot;Vérifier le statut&quot;.
-                          Sinon relancez un nouveau paiement ci-dessous.
-                        </p>
-                        <div className="pt-1">
-                          <RefreshPaymentButton orderId={order.id} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-xs text-[#6B7280]" style={mFont}>
-                    Prestation livrée — il ne reste plus qu&apos;à régler. Paiement sécurisé par Stripe.
-                  </p>
-                  <PayOrderButton
-                    orderId={order.id}
-                    amountLabel={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Progression */}
           {order.status !== "disputed" && (
             <div className="bg-white rounded-lg p-6">
@@ -444,6 +392,57 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
 
             {/* Colonne droite */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
+
+              {/* Bloc paiement */}
+              {(isOrderPayable || hasSucceededPayment) && (
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={16} style={{ color: "#1A3A52" }} />
+                    <p className="text-sm font-bold text-black" style={mFont}>Paiement</p>
+                  </div>
+
+                  {hasSucceededPayment ? (
+                    <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
+                      <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-sm font-bold" style={{ color: "#16A34A", ...mFont }}>
+                          Règlement effectué
+                        </p>
+                        <p className="text-xs text-[#6B7280]" style={mFont}>
+                          Merci ! Le traiteur a été crédité.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {hasPendingPayment && (
+                        <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
+                          <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
+                              Tentative non finalisée
+                            </p>
+                            <p className="text-xs text-[#6B7280]" style={mFont}>
+                              Votre précédente tentative n&apos;a pas été menée au bout. Si vous venez de
+                              payer, cliquez sur &quot;Vérifier le statut&quot;.
+                            </p>
+                            <div className="pt-1">
+                              <RefreshPaymentButton orderId={order.id} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        Prestation livrée — il ne reste plus qu&apos;à régler. Paiement sécurisé par Stripe.
+                      </p>
+                      <PayOrderButton
+                        orderId={order.id}
+                        amountLabel={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {caterer && (
                 <ContactCard

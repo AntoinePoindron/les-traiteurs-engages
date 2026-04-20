@@ -568,38 +568,6 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 </div>
               </div>
 
-              <div className="border-t border-[#f2f2f2]" />
-
-              {/* Montant */}
-              <div className="flex flex-col gap-3">
-                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Montant
-                </p>
-                <RightRow label="Total HT" value={`${totalHT.toLocaleString("fr-FR")} €`} />
-                <RightRow
-                  label="Total TTC"
-                  value={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
-                />
-                {quote?.amount_per_person != null && (
-                  <RightRow
-                    label="Par personne"
-                    value={`${Number(quote.amount_per_person).toLocaleString("fr-FR")} € HT`}
-                  />
-                )}
-                {quote?.valorisable_agefiph != null && (
-                  <div className="flex items-center justify-between p-2 rounded-lg" style={{ backgroundColor: "#F0F4F7" }}>
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-[#1A3A52]" style={mFont}>
-                      <TrendingUp size={11} />
-                      Val. AGEFIPH
-                    </span>
-                    <span className="text-xs font-bold text-[#1A3A52]" style={mFont}>
-                      {Number(quote.valorisable_agefiph).toLocaleString("fr-FR")} €
-                    </span>
-                  </div>
-                )}
-              </div>
-
-
               </div>
             </div>
           </div>

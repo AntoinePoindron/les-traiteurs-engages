@@ -203,15 +203,15 @@ export async function refreshCatererStripeStatus(): Promise<
   const stripe = getStripeClient();
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const account = await (stripe as any).v2.core.accounts.retrieve(stripeAccountId, {
-      include: ["configuration.recipient", "identity"],
-    });
+    // Utilise l'API V1 `accounts.retrieve` qui lit les capabilities du
+    // compte connecté sans nécessiter le header Stripe-Context que V2
+    // exige (et que le SDK Node ne passe pas automatiquement pour les
+    // retrieves faits côté plateforme). Le compte sous-jacent est le
+    // même, seule l'API diffère.
+    const account = await stripe.accounts.retrieve(stripeAccountId);
 
-    const recipient = account.configuration?.recipient;
-    const transfersStatus = recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
-    const payoutsEnabled = transfersStatus === "active";
-    const chargesEnabled = payoutsEnabled;
+    const payoutsEnabled = !!account.payouts_enabled;
+    const chargesEnabled = !!account.charges_enabled;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: updateErr } = await (admin as any)

@@ -65,21 +65,13 @@ export async function POST(request: Request) {
     }
 
     try {
-      // Récupère l'état à jour du compte (l'event V2 est "thin" = on re-fetch)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const account = await (stripe as any).v2.core.accounts.retrieve(accountId, {
-        include: ["configuration.recipient", "identity"],
-      });
+      // Récupère l'état à jour via l'API V1 (plus simple : retourne
+      // directement charges_enabled / payouts_enabled sans header
+      // Stripe-Context à passer manuellement).
+      const account = await stripe.accounts.retrieve(accountId);
 
-      const recipient = account.configuration?.recipient;
-      const transfersStatus =
-        recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
-
-      // "active" = capability OK et fonds transférables
-      const payoutsEnabled = transfersStatus === "active";
-      // Pour l'onboarding recipient-only, on considère charges_enabled = payouts_enabled.
-      // Quand on ajoutera des charges directes (phase 3), on regardera aussi merchant.
-      const chargesEnabled = payoutsEnabled;
+      const payoutsEnabled = !!account.payouts_enabled;
+      const chargesEnabled = !!account.charges_enabled;
 
       const onboardedAt = payoutsEnabled ? new Date().toISOString() : null;
 

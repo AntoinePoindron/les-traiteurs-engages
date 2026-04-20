@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Users, Loader2, KeyRound, Check } from "lucide-react";
+import { X, Users, Loader2, KeyRound, Check, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { listDevUsers, type DevUser } from "./actions";
+import { listDevUsers, setPasswordForAllDevUsers, type DevUser } from "./actions";
 import type { UserRole } from "@/types/database";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -46,6 +46,8 @@ export default function DevUserSwitcher({ currentUserId }: DevUserSwitcherProps)
   const [password, setPassword] = useState<string>("");
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem(PASSWORD_KEY) : "";
@@ -59,8 +61,36 @@ export default function DevUserSwitcher({ currentUserId }: DevUserSwitcherProps)
 
   function savePassword(pw: string) {
     setPassword(pw);
+    setApplyResult(null);
     if (pw) localStorage.setItem(PASSWORD_KEY, pw);
     else    localStorage.removeItem(PASSWORD_KEY);
+  }
+
+  async function applyPasswordToAllUsers() {
+    if (!password || password.length < 6) {
+      setError("Le mot de passe doit faire au moins 6 caractères.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Appliquer ce mot de passe à TOUS les utilisateurs ? Cette action écrase le mot de passe actuel de chaque compte.`
+    );
+    if (!confirmed) return;
+
+    setApplying(true);
+    setError(null);
+    setApplyResult(null);
+    try {
+      const res = await setPasswordForAllDevUsers(password);
+      if (res.failed.length > 0) {
+        setApplyResult(`${res.updated} OK, ${res.failed.length} échec(s)`);
+      } else {
+        setApplyResult(`Mot de passe appliqué à ${res.updated} utilisateur(s).`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erreur inconnue");
+    } finally {
+      setApplying(false);
+    }
   }
 
   async function switchTo(user: DevUser) {
@@ -131,8 +161,8 @@ export default function DevUserSwitcher({ currentUserId }: DevUserSwitcherProps)
           </div>
 
           {/* Password */}
-          <div className="px-4 py-3 border-b border-[#F3F4F6] shrink-0">
-            <label className="flex items-center gap-1.5 text-[11px] font-bold text-[#6B7280] mb-1.5" style={mFont}>
+          <div className="px-4 py-3 border-b border-[#F3F4F6] shrink-0 flex flex-col gap-2">
+            <label className="flex items-center gap-1.5 text-[11px] font-bold text-[#6B7280]" style={mFont}>
               <KeyRound size={11} />
               Mot de passe dev partagé
             </label>
@@ -144,6 +174,32 @@ export default function DevUserSwitcher({ currentUserId }: DevUserSwitcherProps)
               className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm text-black outline-none focus:border-[#1A3A52] transition-colors"
               style={mFont}
             />
+            <button
+              type="button"
+              onClick={applyPasswordToAllUsers}
+              disabled={applying || !password || password.length < 6}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F0F4F8] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={mFont}
+              title="Écrase le mot de passe de tous les comptes avec la valeur saisie"
+            >
+              {applying ? (
+                <>
+                  <Loader2 size={11} className="animate-spin" />
+                  Application…
+                </>
+              ) : (
+                <>
+                  <ShieldCheck size={11} />
+                  Appliquer à tous les users
+                </>
+              )}
+            </button>
+            {applyResult && (
+              <p className="text-[10px] text-[#16A34A] flex items-center gap-1" style={mFont}>
+                <Check size={10} />
+                {applyResult}
+              </p>
+            )}
           </div>
 
           {/* Error */}

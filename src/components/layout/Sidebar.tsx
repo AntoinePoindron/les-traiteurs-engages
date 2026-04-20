@@ -19,6 +19,7 @@ import {
   ChefHat,
   HelpCircle,
   Bell,
+  CreditCard,
   MessageSquare as MsgIcon,
   CheckCircle,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const catererNav: NavItem[] = [
   { label: "Liste des demandes", href: "/caterer/requests",  icon: FileText },
   { label: "Liste des commandes",href: "/caterer/orders",    icon: ShoppingBag },
   { label: "Fiche traiteur",     href: "/caterer/profile",   icon: ChefHat },
+  { label: "Paiements",          href: "/caterer/stripe",    icon: CreditCard },
   { label: "Messagerie",         href: "/caterer/messages",  icon: MessageSquare },
   { label: "Besoin d'aide",      href: "/caterer/help",      icon: HelpCircle },
 ];

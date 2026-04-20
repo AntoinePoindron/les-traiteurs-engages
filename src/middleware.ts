@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Routes publiques (auth)
-  const publicRoutes = ["/login", "/register", "/reset-password"];
+  const publicRoutes = ["/login", "/signup", "/reset-password"];
   const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
 
   // Helper : propage les cookies refresh de Supabase SSR sur un

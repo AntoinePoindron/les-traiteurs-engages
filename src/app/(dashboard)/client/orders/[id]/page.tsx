@@ -395,11 +395,10 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
 
               {/* Bloc paiement */}
               {(isOrderPayable || hasSucceededPayment) && (
-                <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <CreditCard size={16} style={{ color: "#1A3A52" }} />
-                    <p className="text-sm font-bold text-black" style={mFont}>Paiement</p>
-                  </div>
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Paiement
+                  </p>
 
                   {hasSucceededPayment ? (
                     <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>

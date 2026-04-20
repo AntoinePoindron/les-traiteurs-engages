@@ -8,7 +8,7 @@ import type { Caterer, ServiceTypeConfig } from "@/types/database";
 import { validateCatererAction, rejectCatererAction } from "../actions";
 import {
   MapPin, Truck, Users, CheckCircle, Clock, ChefHat,
-  Euro, Percent, FileText, ShoppingBag, Hash, Utensils, ExternalLink,
+  Euro, FileText, ShoppingBag, Hash, Utensils, ExternalLink,
 } from "lucide-react";
 
 // Never serve from cache — orders / requests change continuously.
@@ -227,15 +227,10 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
                     caterer.esat_status ? "pt-3 border-t border-[#F3F4F6]" : ""
                   }`}
                 >
-                  <InfoRow icon={Hash}     label="SIRET"      value={caterer.siret} />
-                  <InfoRow icon={MapPin}   label="Adresse"    value={addressValue} />
-                  <InfoRow icon={Truck}    label="Livraison"  value={deliveryValue} />
-                  <InfoRow icon={Users}    label="Capacité"   value={capacityValue} />
-                  <InfoRow
-                    icon={Percent}
-                    label="Commission"
-                    value={caterer.commission_rate != null ? `${caterer.commission_rate} %` : null}
-                  />
+                  <InfoRow icon={Hash}   label="SIRET"      value={caterer.siret} />
+                  <InfoRow icon={MapPin} label="Adresse"    value={addressValue} />
+                  <InfoRow icon={Truck}  label="Livraison"  value={deliveryValue} />
+                  <InfoRow icon={Users}  label="Capacité"   value={capacityValue} />
                 </div>
 
                 {activeDiets.length > 0 && (

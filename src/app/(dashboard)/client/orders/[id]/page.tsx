@@ -444,6 +444,36 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 </div>
               )}
 
+              {/* Événement + lien vers la demande initiale */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                  Événement
+                </p>
+                <div className="flex flex-col gap-3">
+                  <RightRow label="Date" value={eventDate} />
+                  {(qr?.event_start_time || qr?.event_end_time) && (
+                    <RightRow
+                      label="Horaires"
+                      value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")}
+                    />
+                  )}
+                  <RightRow label="Convives" value={`${qr?.guest_count ?? "—"} personnes`} />
+                  <RightRow label="Lieu de livraison" value={order.delivery_address} />
+                  {deliveryDate && <RightRow label="Date de livraison" value={deliveryDate} />}
+                </div>
+                {qr?.id && (
+                  <Link
+                    href={`/client/requests/${qr.id}`}
+                    className="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors w-full"
+                    style={mFont}
+                  >
+                    <FileText size={13} />
+                    Voir la demande initiale
+                  </Link>
+                )}
+              </div>
+
+              {/* Carte traiteur */}
               {caterer && (
                 <ContactCard
                   entityType="caterer"
@@ -461,25 +491,9 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 />
               )}
 
-              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
-
-
-              {/* Lien demande initiale */}
-              {qr?.id && (
-                <Link
-                  href={`/client/requests/${qr.id}`}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors w-full"
-                  style={mFont}
-                >
-                  <FileText size={13} />
-                  Voir la demande initiale
-                </Link>
-              )}
-
-              {/* Facture */}
+              {/* Facture (bloc standalone) */}
               {invoice && (
-                <>
-                  <div className="border-t border-[#f2f2f2]" />
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
                   <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -544,31 +558,8 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                       )}
                     </div>
                   </div>
-                </>
-              )}
-
-              <div className="border-t border-[#f2f2f2]" />
-
-              {/* Événement */}
-              <div className="flex flex-col gap-4">
-                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Événement
-                </p>
-                <div className="flex flex-col gap-3">
-                  <RightRow label="Date" value={eventDate} />
-                  {(qr?.event_start_time || qr?.event_end_time) && (
-                    <RightRow
-                      label="Horaires"
-                      value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")}
-                    />
-                  )}
-                  <RightRow label="Convives" value={`${qr?.guest_count ?? "—"} personnes`} />
-                  <RightRow label="Lieu de livraison" value={order.delivery_address} />
-                  {deliveryDate && <RightRow label="Date de livraison" value={deliveryDate} />}
                 </div>
-              </div>
-
-              </div>
+              )}
             </div>
           </div>
         </div>

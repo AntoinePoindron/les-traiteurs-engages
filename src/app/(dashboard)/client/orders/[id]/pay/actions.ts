@@ -249,14 +249,32 @@ export async function refreshOrderPaymentStatus(
     );
 
     const paymentStatus = session.payment_status;
+    const sessionStatus = session.status; // "open" | "complete" | "expired"
     const succeeded = paymentStatus === "paid" || paymentStatus === "no_payment_required";
+    const abandoned = sessionStatus === "expired";
     const now = new Date().toISOString();
+
+    // Statut dérivé :
+    //  - paid / no_payment_required → succeeded
+    //  - session expired → canceled (le user n'a pas payé à temps)
+    //  - session complete mais unpaid → failed (bizarre, peut arriver sur certains flux)
+    //  - open + unpaid → pending (le user peut encore finaliser)
+    //  - autre → processing
+    const newStatus = succeeded
+      ? "succeeded"
+      : abandoned
+        ? "canceled"
+        : sessionStatus === "complete"
+          ? "failed"
+          : paymentStatus === "unpaid"
+            ? "pending"
+            : "processing";
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (admin as any)
       .from("payments")
       .update({
-        status: succeeded ? "succeeded" : paymentStatus === "unpaid" ? "pending" : "processing",
+        status: newStatus,
         stripe_payment_intent_id: (session.payment_intent as string | null) ?? payment.stripe_payment_intent_id,
         succeeded_at: succeeded ? now : null,
         last_event_at: now,

@@ -231,12 +231,13 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
           )}
 
           {/* Bloc paiement */}
-          {(isOrderPayable || hasSucceededPayment || hasPendingPayment) && (
+          {(isOrderPayable || hasSucceededPayment) && (
             <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <CreditCard size={16} style={{ color: "#1A3A52" }} />
                 <p className="text-sm font-bold text-black" style={mFont}>Paiement</p>
               </div>
+
               {hasSucceededPayment ? (
                 <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
                   <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
@@ -249,24 +250,26 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                     </p>
                   </div>
                 </div>
-              ) : hasPendingPayment ? (
+              ) : (
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
-                    <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
-                        Paiement en cours de traitement
-                      </p>
-                      <p className="text-xs text-[#6B7280]" style={mFont}>
-                        Stripe finalise votre règlement. Si le statut ne se met pas à jour après
-                        quelques secondes, cliquez sur &quot;Vérifier le statut&quot;.
-                      </p>
+                  {hasPendingPayment && (
+                    <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
+                      <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
+                          Tentative de paiement non finalisée
+                        </p>
+                        <p className="text-xs text-[#6B7280]" style={mFont}>
+                          Votre précédente tentative n&apos;a pas été menée au bout. Si vous venez de payer
+                          et que rien ne s&apos;est mis à jour, cliquez sur &quot;Vérifier le statut&quot;.
+                          Sinon relancez un nouveau paiement ci-dessous.
+                        </p>
+                        <div className="pt-1">
+                          <RefreshPaymentButton orderId={order.id} />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <RefreshPaymentButton orderId={order.id} />
-                </div>
-              ) : isOrderPayable ? (
-                <div className="flex flex-col gap-3">
+                  )}
                   <p className="text-xs text-[#6B7280]" style={mFont}>
                     Prestation livrée — il ne reste plus qu&apos;à régler. Paiement sécurisé par Stripe.
                   </p>
@@ -275,7 +278,7 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                     amountLabel={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
                   />
                 </div>
-              ) : null}
+              )}
             </div>
           )}
 

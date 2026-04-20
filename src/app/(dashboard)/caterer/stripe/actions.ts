@@ -121,7 +121,10 @@ export async function createCatererOnboardingLink(): Promise<
       use_case: {
         type: "account_onboarding",
         account_onboarding: {
-          configurations: ["recipient", "merchant"],
+          // Doit correspondre aux configurations réellement appliquées au
+          // compte lors de sa création (ici : recipient uniquement, puisqu'on
+          // fait des Destination charges — la plateforme est le merchant).
+          configurations: ["recipient"],
           refresh_url: `${origin}/caterer/stripe?status=refresh`,
           return_url: `${origin}/caterer/stripe/complete`,
         },

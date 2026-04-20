@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
@@ -187,4 +188,91 @@ export async function createOrderCheckoutSession(
   }
 
   return { ok: true, url: session.url };
+}
+
+/**
+ * Synchronise l'état du paiement depuis Stripe (sans attendre le webhook).
+ *
+ * Utile quand le webhook n'arrive pas (dev local sans `stripe listen`,
+ * endpoint mal configuré, erreur transitoire). Côté UX, c'est aussi un
+ * filet de sécurité pour éviter qu'un client reste bloqué sur "Paiement
+ * en cours de traitement" si la synchro asynchrone a raté.
+ */
+export async function refreshOrderPaymentStatus(
+  orderId: string,
+): Promise<{ ok: true; paid: boolean } | { ok: false; error: string }> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non authentifié" };
+
+  // L'RLS sur orders garantit que seul un user autorisé passe ici.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: orderRaw } = await (supabase as any)
+    .from("orders")
+    .select("id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!orderRaw) return { ok: false, error: "Commande introuvable" };
+
+  const admin = createAdminClient();
+
+  // Récupère la dernière tentative de paiement pour cette commande
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: paymentRaw } = await (admin as any)
+    .from("payments")
+    .select("id, stripe_checkout_session_id, stripe_payment_intent_id, status")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const payment = paymentRaw as {
+    id: string;
+    stripe_checkout_session_id: string | null;
+    stripe_payment_intent_id: string | null;
+    status: string;
+  } | null;
+  if (!payment) return { ok: false, error: "Aucun paiement à synchroniser" };
+
+  const stripe = getStripeClient();
+
+  try {
+    // Re-fetch la Checkout Session pour connaître son statut réel
+    if (!payment.stripe_checkout_session_id) {
+      return { ok: false, error: "Pas de session Stripe à synchroniser" };
+    }
+    const session = await stripe.checkout.sessions.retrieve(
+      payment.stripe_checkout_session_id,
+    );
+
+    const paymentStatus = session.payment_status;
+    const succeeded = paymentStatus === "paid" || paymentStatus === "no_payment_required";
+    const now = new Date().toISOString();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from("payments")
+      .update({
+        status: succeeded ? "succeeded" : paymentStatus === "unpaid" ? "pending" : "processing",
+        stripe_payment_intent_id: (session.payment_intent as string | null) ?? payment.stripe_payment_intent_id,
+        succeeded_at: succeeded ? now : null,
+        last_event_at: now,
+      })
+      .eq("id", payment.id);
+
+    if (succeeded) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin as any).from("orders").update({ status: "paid" }).eq("id", orderId);
+    }
+
+    revalidatePath(`/client/orders/${orderId}`);
+
+    return { ok: true, paid: succeeded };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Synchro Stripe échouée : ${msg}` };
+  }
 }

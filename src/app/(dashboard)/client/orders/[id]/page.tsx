@@ -6,6 +6,7 @@ import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
 import PayOrderButton from "./pay/PayOrderButton";
+import RefreshPaymentButton from "./pay/RefreshPaymentButton";
 import { formatDateTime } from "@/lib/format";
 import type { OrderStatus } from "@/types/database";
 
@@ -249,16 +250,20 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                   </div>
                 </div>
               ) : hasPendingPayment ? (
-                <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
-                  <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
-                      Paiement en cours de traitement
-                    </p>
-                    <p className="text-xs text-[#6B7280]" style={mFont}>
-                      Stripe finalise votre règlement. Actualisez la page dans quelques secondes.
-                    </p>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
+                    <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
+                        Paiement en cours de traitement
+                      </p>
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        Stripe finalise votre règlement. Si le statut ne se met pas à jour après
+                        quelques secondes, cliquez sur &quot;Vérifier le statut&quot;.
+                      </p>
+                    </div>
                   </div>
+                  <RefreshPaymentButton orderId={order.id} />
                 </div>
               ) : isOrderPayable ? (
                 <div className="flex flex-col gap-3">

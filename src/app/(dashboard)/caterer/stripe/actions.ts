@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/server";
@@ -153,5 +154,85 @@ export async function createCatererOnboardingLink(): Promise<
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: `Création du lien d'onboarding échouée : ${msg}` };
+  }
+}
+
+/**
+ * Synchronise l'état local du traiteur avec Stripe.
+ *
+ * Utile si :
+ *  - le webhook n'est pas configuré (dev local, ou endpoint pas créé)
+ *  - le webhook a échoué silencieusement
+ *  - l'utilisateur veut forcer un refresh manuel
+ *
+ * Va chercher directement l'état du compte sur Stripe et met à jour les flags
+ * stripe_charges_enabled / stripe_payouts_enabled / stripe_onboarded_at.
+ */
+export async function refreshCatererStripeStatus(): Promise<
+  | { ok: true; ready: boolean }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non authentifié" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from("users")
+    .select("caterer_id")
+    .eq("id", user.id)
+    .single();
+  const catererId = (profile as { caterer_id: string | null } | null)?.caterer_id;
+  if (!catererId) return { ok: false, error: "Aucun traiteur rattaché" };
+
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: catererRaw } = await (admin as any)
+    .from("caterers")
+    .select("stripe_account_id")
+    .eq("id", catererId)
+    .single();
+
+  const stripeAccountId = (catererRaw as { stripe_account_id: string | null } | null)?.stripe_account_id;
+  if (!stripeAccountId) {
+    return { ok: false, error: "Compte Stripe non créé" };
+  }
+
+  const stripe = getStripeClient();
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const account = await (stripe as any).v2.core.accounts.retrieve(stripeAccountId, {
+      include: ["configuration.recipient", "identity"],
+    });
+
+    const recipient = account.configuration?.recipient;
+    const transfersStatus = recipient?.capabilities?.stripe_balance?.stripe_transfers?.status;
+    const payoutsEnabled = transfersStatus === "active";
+    const chargesEnabled = payoutsEnabled;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateErr } = await (admin as any)
+      .from("caterers")
+      .update({
+        stripe_charges_enabled: chargesEnabled,
+        stripe_payouts_enabled: payoutsEnabled,
+        stripe_onboarded_at: payoutsEnabled ? new Date().toISOString() : null,
+      })
+      .eq("id", catererId);
+
+    if (updateErr) {
+      return { ok: false, error: `Mise à jour DB échouée : ${updateErr.message}` };
+    }
+
+    revalidatePath("/caterer/stripe");
+    revalidatePath("/caterer/stripe/complete");
+
+    return { ok: true, ready: payoutsEnabled };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: `Récupération du compte Stripe échouée : ${msg}` };
   }
 }

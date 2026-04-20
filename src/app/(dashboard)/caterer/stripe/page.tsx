@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import BackButton from "@/components/ui/BackButton";
 import { CheckCircle, Clock, CreditCard, ExternalLink, Info } from "lucide-react";
 import StartOnboardingButton from "./StartOnboardingButton";
+import RefreshStatusButton from "./RefreshStatusButton";
 
 // Never cache — status comes from webhooks and must reflect the latest state.
 export const dynamic = "force-dynamic";
@@ -126,8 +127,10 @@ export default async function CatererStripePage({ searchParams }: PageProps) {
                       Onboarding incomplet
                     </p>
                     <p className="text-xs text-[#6B7280]" style={mFont}>
-                      Votre compte Stripe est créé mais il manque des informations. Continuez
-                      l&apos;onboarding pour activer la réception des paiements.
+                      Votre compte Stripe est créé mais il manque des informations ou la
+                      validation est encore en cours côté Stripe. Cliquez sur &quot;Vérifier
+                      le statut&quot; si vous venez de finaliser votre inscription, ou relancez
+                      l&apos;onboarding pour compléter les infos manquantes.
                     </p>
                   </div>
                 </div>
@@ -135,7 +138,10 @@ export default async function CatererStripePage({ searchParams }: PageProps) {
                   <StatusRow label="Paiements acceptés" ok={caterer?.stripe_charges_enabled ?? false} />
                   <StatusRow label="Virements bancaires" ok={caterer?.stripe_payouts_enabled ?? false} />
                 </div>
-                <StartOnboardingButton label="Continuer l'onboarding" />
+                <div className="flex flex-wrap gap-2">
+                  <RefreshStatusButton />
+                  <StartOnboardingButton label="Continuer l'onboarding" />
+                </div>
               </>
             )}
 

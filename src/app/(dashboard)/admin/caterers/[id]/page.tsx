@@ -173,9 +173,22 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
                 >
                   {caterer.name}
                 </h1>
-                <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
-                  {[caterer.city, `Inscrit le ${formatDate(caterer.created_at)}`].filter(Boolean).join(" · ")}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  <p className="text-sm text-[#6B7280]" style={mFont}>
+                    {[caterer.city, `Inscrit le ${formatDate(caterer.created_at)}`].filter(Boolean).join(" · ")}
+                  </p>
+                  {caterer.is_validated ? (
+                    <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: "#16A34A", ...mFont }}>
+                      <CheckCircle size={12} />
+                      Compte validé
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: "#B45309", ...mFont }}>
+                      <Clock size={12} />
+                      En attente
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <Link
@@ -198,35 +211,22 @@ export default async function AdminCatererDetailPage({ params }: PageProps) {
 
               {/* Informations */}
               <Section title="Informations">
-                <div className="flex flex-wrap gap-1.5">
-                  {caterer.is_validated ? (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
-                      style={{ backgroundColor: "#DCFCE7", color: "#16A34A", ...mFont }}
-                    >
-                      <CheckCircle size={10} />
-                      Compte validé
-                    </span>
-                  ) : (
-                    <span
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
-                      style={{ backgroundColor: "#FFF3CD", color: "#B45309", ...mFont }}
-                    >
-                      <Clock size={10} />
-                      En attente
-                    </span>
-                  )}
-                  {caterer.esat_status && (
+                {caterer.esat_status && (
+                  <div className="flex flex-wrap gap-1.5">
                     <span
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold"
                       style={{ backgroundColor: "#DCFCE7", color: "#16A34A", ...mFont }}
                     >
                       ESAT
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="flex flex-col gap-3 pt-3 border-t border-[#F3F4F6]">
+                <div
+                  className={`flex flex-col gap-3 ${
+                    caterer.esat_status ? "pt-3 border-t border-[#F3F4F6]" : ""
+                  }`}
+                >
                   <InfoRow icon={Hash}     label="SIRET"      value={caterer.siret} />
                   <InfoRow icon={MapPin}   label="Adresse"    value={addressValue} />
                   <InfoRow icon={Truck}    label="Livraison"  value={deliveryValue} />

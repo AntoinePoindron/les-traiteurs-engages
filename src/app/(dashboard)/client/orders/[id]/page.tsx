@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { TrendingUp, FileText, CreditCard, Download } from "lucide-react";
+import { TrendingUp, FileText, CreditCard, Download, CheckCircle, Clock, Info } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
+import PayOrderButton from "./pay/PayOrderButton";
 import { formatDateTime } from "@/lib/format";
 import type { OrderStatus } from "@/types/database";
 
@@ -35,12 +36,14 @@ const SECTION_LABELS: Record<string, string> = {
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ payment?: string }>;
 }
 
 // ── Page ───────────────────────────────────────────────────────
 
-export default async function ClientOrderDetailPage({ params }: PageProps) {
+export default async function ClientOrderDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { payment: paymentFlag } = await searchParams;
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -147,6 +150,25 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
 
   const currentStepIdx = ORDER_STATUS_STEPS.findIndex((s) => s.status === order.status);
 
+  // ── État paiement ──────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: paymentsRaw } = await (supabase as any)
+    .from("payments")
+    .select("id, status, amount_total_cents, succeeded_at")
+    .eq("order_id", id)
+    .order("created_at", { ascending: false });
+  const paymentsList = (paymentsRaw ?? []) as Array<{
+    id: string;
+    status: string;
+    amount_total_cents: number;
+    succeeded_at: string | null;
+  }>;
+  const hasSucceededPayment = paymentsList.some((p) => p.status === "succeeded");
+  const hasPendingPayment = paymentsList.some((p) => p.status === "pending" || p.status === "processing");
+  const isOrderPayable =
+    !hasSucceededPayment &&
+    (order.status === "delivered" || order.status === "invoiced");
+
   return (
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
       <div className="pt-[54px] px-6 pb-12">
@@ -175,6 +197,82 @@ export default async function ClientOrderDetailPage({ params }: PageProps) {
             </div>
             <StatusBadge variant={ORDER_STATUS_VARIANT[order.status as OrderStatus]} />
           </div>
+
+          {/* Bannière retour Stripe */}
+          {paymentFlag === "success" && (
+            <div
+              className="bg-white rounded-lg p-4 border-l-4 flex items-start gap-3"
+              style={{ borderLeftColor: "#16A34A" }}
+            >
+              <CheckCircle size={18} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-black" style={mFont}>Paiement envoyé</p>
+                <p className="text-xs text-[#6B7280] mt-0.5" style={mFont}>
+                  Votre règlement a bien été initié. Le statut sera mis à jour dès confirmation par Stripe
+                  (quelques secondes).
+                </p>
+              </div>
+            </div>
+          )}
+          {paymentFlag === "cancelled" && (
+            <div
+              className="bg-white rounded-lg p-4 border-l-4 flex items-start gap-3"
+              style={{ borderLeftColor: "#F59E0B" }}
+            >
+              <Info size={18} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-black" style={mFont}>Paiement annulé</p>
+                <p className="text-xs text-[#6B7280] mt-0.5" style={mFont}>
+                  Vous pouvez retenter le paiement à tout moment tant que la commande n&apos;est pas réglée.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Bloc paiement */}
+          {(isOrderPayable || hasSucceededPayment || hasPendingPayment) && (
+            <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <CreditCard size={16} style={{ color: "#1A3A52" }} />
+                <p className="text-sm font-bold text-black" style={mFont}>Paiement</p>
+              </div>
+              {hasSucceededPayment ? (
+                <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
+                  <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-sm font-bold" style={{ color: "#16A34A", ...mFont }}>
+                      Règlement effectué
+                    </p>
+                    <p className="text-xs text-[#6B7280]" style={mFont}>
+                      Merci ! Le traiteur a été crédité.
+                    </p>
+                  </div>
+                </div>
+              ) : hasPendingPayment ? (
+                <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
+                  <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
+                      Paiement en cours de traitement
+                    </p>
+                    <p className="text-xs text-[#6B7280]" style={mFont}>
+                      Stripe finalise votre règlement. Actualisez la page dans quelques secondes.
+                    </p>
+                  </div>
+                </div>
+              ) : isOrderPayable ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs text-[#6B7280]" style={mFont}>
+                    Prestation livrée — il ne reste plus qu&apos;à régler. Paiement sécurisé par Stripe.
+                  </p>
+                  <PayOrderButton
+                    orderId={order.id}
+                    amountLabel={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {/* Progression */}
           {order.status !== "disputed" && (

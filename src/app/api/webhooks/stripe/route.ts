@@ -108,7 +108,119 @@ export async function POST(request: Request) {
     }
   }
 
-  // TODO phase 3 : checkout.session.completed, payment_intent.payment_failed
+  // ── V1 event : checkout.session.completed ────────────────────
+  if (event.type === "checkout.session.completed") {
+    const session = event.data?.object;
+    if (!session) {
+      console.warn("[stripe-webhook] checkout.session.completed sans data.object");
+      return NextResponse.json({ received: true });
+    }
+
+    const sessionId = session.id as string;
+    const paymentIntentId = (session.payment_intent as string | null) ?? null;
+    const orderId = (session.client_reference_id as string | null)
+      ?? (session.metadata?.order_id as string | null)
+      ?? null;
+    const paymentStatus = session.payment_status as string | undefined;
+
+    // Stripe peut envoyer l'event même si payment_status = "unpaid" (bank
+    // authorisation asynchrone). On ne marque comme succeeded que si Stripe
+    // confirme "paid" ou "no_payment_required".
+    const succeeded = paymentStatus === "paid" || paymentStatus === "no_payment_required";
+
+    // Cherche la ligne payments existante créée par createOrderCheckoutSession
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from("payments")
+      .select("id, order_id")
+      .eq("stripe_checkout_session_id", sessionId)
+      .maybeSingle();
+
+    const now = new Date().toISOString();
+
+    if (existing) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updateErr } = await (admin as any)
+        .from("payments")
+        .update({
+          status: succeeded ? "succeeded" : "processing",
+          stripe_payment_intent_id: paymentIntentId,
+          succeeded_at: succeeded ? now : null,
+          last_event_at: now,
+        })
+        .eq("id", existing.id);
+      if (updateErr) {
+        console.error("[stripe-webhook] update payment failed:", updateErr);
+      }
+    } else if (orderId) {
+      // Fallback : la ligne n'existait pas (server action a échoué après le
+      // create mais avant l'insert). On crée la ligne ici pour ne rien perdre.
+      console.warn("[stripe-webhook] payment row missing, inserting from webhook");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: orderRow } = await (admin as any)
+        .from("orders")
+        .select("quotes(total_amount_ht, caterers(id, commission_rate))")
+        .eq("id", orderId)
+        .maybeSingle();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o = orderRow as any;
+      const caterer = o?.quotes?.caterers;
+      const amountTotalCents = Number(session.amount_total ?? 0);
+      const rate = Number(caterer?.commission_rate ?? 10);
+      const feeCents = Math.round((amountTotalCents * rate) / 100);
+      if (caterer?.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin as any).from("payments").insert({
+          order_id: orderId,
+          caterer_id: caterer.id,
+          stripe_checkout_session_id: sessionId,
+          stripe_payment_intent_id: paymentIntentId,
+          status: succeeded ? "succeeded" : "processing",
+          amount_total_cents: amountTotalCents,
+          application_fee_cents: feeCents,
+          amount_to_caterer_cents: amountTotalCents - feeCents,
+          currency: (session.currency as string) ?? "eur",
+          succeeded_at: succeeded ? now : null,
+          last_event_at: now,
+        });
+      }
+    }
+
+    // Met à jour la commande en "paid" si succeeded
+    if (succeeded && orderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: orderErr } = await (admin as any)
+        .from("orders")
+        .update({ status: "paid" })
+        .eq("id", orderId);
+      if (orderErr) {
+        console.error("[stripe-webhook] update order to paid failed:", orderErr);
+      }
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
+  // ── V1 event : payment_intent.payment_failed ──────────────────
+  if (event.type === "payment_intent.payment_failed") {
+    const intent = event.data?.object;
+    const intentId = intent?.id as string | undefined;
+    const failureMessage = (intent?.last_payment_error?.message as string | undefined) ?? null;
+
+    if (intentId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin as any)
+        .from("payments")
+        .update({
+          status: "failed",
+          failure_reason: failureMessage,
+          last_event_at: new Date().toISOString(),
+        })
+        .eq("stripe_payment_intent_id", intentId);
+    }
+
+    return NextResponse.json({ received: true });
+  }
 
   // Event non géré — on ACK quand même pour ne pas générer de retries.
   console.log("[stripe-webhook] event ignoré :", event.type);

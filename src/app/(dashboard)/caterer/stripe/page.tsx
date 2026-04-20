@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import BackButton from "@/components/ui/BackButton";
 import { CheckCircle, Clock, CreditCard, ExternalLink, Info } from "lucide-react";
 import StartOnboardingButton from "./StartOnboardingButton";
 import RefreshStatusButton from "./RefreshStatusButton";
@@ -112,8 +111,6 @@ export default async function CatererStripePage({ searchParams }: PageProps) {
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
       <div className="pt-[54px] px-6 pb-12">
         <div className="mx-auto flex flex-col gap-6" style={{ maxWidth: "720px" }}>
-
-          <BackButton label="Retour" />
 
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#E5EDF2" }}>

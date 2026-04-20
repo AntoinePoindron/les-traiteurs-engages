@@ -108,11 +108,29 @@ export async function createCatererOnboardingLink(): Promise<
   }
 
   // 2. Crée le lien d'onboarding
+  //
+  // L'URL de retour doit être publiquement accessible (https://) OU
+  // être http://localhost:PORT en mode TEST Stripe uniquement.
+  //
+  // Ordre de préférence :
+  //   1. NEXT_PUBLIC_SITE_URL (à définir dans .env.local / Vercel)
+  //   2. origin header de la requête (utile derrière un proxy)
+  //   3. host header de la requête (fallback)
   const hdrs = await headers();
-  const originHeader = hdrs.get("origin");
-  const host = hdrs.get("host") ?? "localhost:3000";
-  const protocol = host.startsWith("localhost") ? "http" : "https";
-  const origin = originHeader ?? `${protocol}://${host}`;
+  let origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  if (!origin) {
+    const originHeader = hdrs.get("origin");
+    if (originHeader) {
+      origin = originHeader;
+    } else {
+      const host = hdrs.get("host") ?? "localhost:3000";
+      const protocol = host.startsWith("localhost") || host.startsWith("127.")
+        ? "http"
+        : "https";
+      origin = `${protocol}://${host}`;
+    }
+  }
+  console.log("[stripe-onboarding] origin utilisé:", origin);
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

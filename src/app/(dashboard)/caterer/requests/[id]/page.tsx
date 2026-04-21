@@ -25,6 +25,12 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
   autre: "Apéritif",
 };
 
+const FLEXIBILITY_LABELS: Record<string, string> = {
+  none: "Budget fixe",
+  "5":  "Flexible (± 5%)",
+  "10": "Flexible (± 10%)",
+};
+
 type StatusVariant =
   | "new"
   | "pending"
@@ -316,101 +322,128 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           {/* Main grid */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
 
-            {/* ── Left : details card ── */}
-            <div
-              className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6"
-            >
+            {/* ── Left : détails (4 blocs thématiques) ── */}
+            <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
 
-              {/* Détails de l'événement */}
-              <Section title="Détails de l'événement">
-                <Row
-                  label="Type de prestation"
-                  value={
-                    (MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type) +
-                    (request.is_full_day && request.meal_type_secondary
-                      ? ` + ${MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}`
-                      : "")
-                  }
-                />
-                <Row label="Date" value={eventDate} />
-                {(request.event_start_time || request.event_end_time) && (
+              {/* 1 — L'événement */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  L&apos;événement
+                </p>
+                <div className="flex flex-col gap-3">
                   <Row
-                    label="Horaires"
-                    value={[request.event_start_time, request.event_end_time]
-                      .filter(Boolean)
-                      .join(" - ")}
+                    label="Type de prestation"
+                    value={
+                      (MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type) +
+                      (request.is_full_day && request.meal_type_secondary
+                        ? ` + ${MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}`
+                        : "")
+                    }
                   />
-                )}
-                <Row label="Lieu" value={request.event_address} />
-                <Row
-                  label="Nombre de personnes"
-                  value={`${request.guest_count} personnes`}
-                />
-              </Section>
-
-              {/* Boissons */}
-              {showDrinks && (
-                <>
-                  <Divider />
-                  <Section title="Boissons">
-                    {request.drinks_details ? (
-                      request.drinks_details
-                        .split(/[,\n]+/)
-                        .map((item) => item.trim())
+                  <Row label="Date" value={eventDate} />
+                  {(request.event_start_time || request.event_end_time) && (
+                    <Row
+                      label="Horaires"
+                      value={[request.event_start_time, request.event_end_time]
                         .filter(Boolean)
-                        .map((item, i) => <Row key={i} label={item} />)
-                    ) : (
-                      <Row label="Boissons incluses" />
-                    )}
-                  </Section>
-                </>
+                        .join(" - ")}
+                    />
+                  )}
+                  <Row label="Lieu" value={request.event_address} />
+                  <Row
+                    label="Nombre de personnes"
+                    value={`${request.guest_count} personnes`}
+                  />
+                </div>
+              </div>
+
+              {/* 2 — La prestation (boissons + services additionnels) */}
+              {(showDrinks || showServices) && (
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    La prestation
+                  </p>
+                  {showDrinks && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Boissons
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {request.drinks_details ? (
+                          request.drinks_details
+                            .split(/[,\n]+/)
+                            .map((item) => item.trim())
+                            .filter(Boolean)
+                            .map((item, i) => <Row key={i} label={item} />)
+                        ) : (
+                          <Row label="Boissons incluses" />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {showDrinks && showServices && <Divider />}
+                  {showServices && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Services additionnels
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {request.service_waitstaff && <Row label="Personnel" />}
+                        {request.service_equipment && (
+                          <Row label="Matériel" value={request.service_other ?? undefined} />
+                        )}
+                        {request.service_decoration && <Row label="Décoration" />}
+                        {request.service_other && !request.service_equipment && (
+                          <Row label="Autre" value={request.service_other} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* Services additionnels */}
-              {showServices && (
-                <>
-                  <Divider />
-                  <Section title="Services additionnels">
-                    {request.service_waitstaff && <Row label="Personnel" />}
-                    {request.service_equipment && (
-                      <Row label="Matériel" value={request.service_other ?? undefined} />
-                    )}
-                    {request.service_decoration && <Row label="Décoration" />}
-                    {request.service_other && !request.service_equipment && (
-                      <Row label="Autre" value={request.service_other} />
-                    )}
-                  </Section>
-                </>
-              )}
-
-              {/* Contraintes alimentaires */}
+              {/* 3 — Préférences et contraintes alimentaires */}
               {showDietary && (
-                <>
-                  <Divider />
-                  <Section title="Préférences et contraintes alimentaires">
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Préférences et contraintes
+                  </p>
+                  <div className="flex flex-col gap-3">
                     {dietaryRows.map((row) => (
                       <Row key={row.label} label={row.label} />
                     ))}
                     {request.dietary_other && (
                       <Row label="Autre" value={request.dietary_other} />
                     )}
-                  </Section>
-                </>
+                  </div>
+                </div>
               )}
 
-              {/* Message du client */}
+              {/* 4 — Message du client */}
               {showMessage && (
-                <>
-                  <Divider />
-                  <Section title="Message du client">
-                    <p
-                      className="text-xs text-black whitespace-pre-wrap italic"
-                      style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-                    >
-                      {request.description}
-                    </p>
-                  </Section>
-                </>
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Message du client
+                  </p>
+                  <p
+                    className="text-sm text-black whitespace-pre-wrap italic leading-relaxed"
+                    style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                  >
+                    {request.description}
+                  </p>
+                </div>
               )}
             </div>
 
@@ -431,6 +464,12 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   <Row
                     label="Budget par personne"
                     value={`${request.budget_per_person.toLocaleString("fr-FR")} €`}
+                  />
+                )}
+                {request.budget_flexibility && (
+                  <Row
+                    label="Flexibilité"
+                    value={FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
                   />
                 )}
               </div>

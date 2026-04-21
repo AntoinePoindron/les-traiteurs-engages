@@ -272,50 +272,76 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
           <div className="flex flex-col md:flex-row gap-6 items-start">
 
-            {/* ── Left : détails ── */}
-            <div className="flex-1 min-w-0 w-full bg-white rounded-lg p-6 flex flex-col gap-6">
+            {/* ── Left : détails (4 blocs thématiques) ── */}
+            <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
 
-              {/* Détails événement */}
-              <Section title="Détails de l'événement">
-                <Row label="Type de prestation" value={serviceLabel + (serviceLabelSecondary ? ` + ${serviceLabelSecondary}` : "")} />
-                <Row label="Date" value={eventDate} />
-                {(request.event_start_time || request.event_end_time) && (
-                  <Row label="Horaires" value={[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")} />
-                )}
-                <Row label="Lieu" value={request.event_address} />
-                <Row label="Nombre de personnes" value={`${request.guest_count} personnes`} />
-                {request.description && (
-                  <Row label="Type d'événement" value={request.description} />
-                )}
-              </Section>
+              {/* 1 — L'événement (quand / où / qui / combien) */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  L&apos;événement
+                </p>
+                <div className="flex flex-col gap-3">
+                  <Row label="Type de prestation" value={serviceLabel + (serviceLabelSecondary ? ` + ${serviceLabelSecondary}` : "")} />
+                  <Row label="Date" value={eventDate} />
+                  {(request.event_start_time || request.event_end_time) && (
+                    <Row label="Horaires" value={[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")} />
+                  )}
+                  <Row label="Lieu" value={request.event_address} />
+                  <Row label="Nombre de personnes" value={`${request.guest_count} personnes`} />
+                  {request.description && (
+                    <Row label="Type d'événement" value={request.description} />
+                  )}
+                </div>
+              </div>
 
-              {/* Boissons */}
-              {drinkItems.length > 0 && (
-                <>
-                  <Divider />
-                  <Section title="Boissons">
-                    {drinkItems.map((item) => <Row key={item} label={item} />)}
-                  </Section>
-                </>
+              {/* 2 — La prestation (boissons + services additionnels) */}
+              {(drinkItems.length > 0 || serviceItems.length > 0) && (
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    La prestation
+                  </p>
+                  {drinkItems.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Boissons
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {drinkItems.map((item) => <Row key={item} label={item} />)}
+                      </div>
+                    </div>
+                  )}
+                  {drinkItems.length > 0 && serviceItems.length > 0 && <Divider />}
+                  {serviceItems.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Services additionnels
+                      </p>
+                      <div className="flex flex-col gap-3">
+                        {serviceItems.map((item, i) => (
+                          <Row key={i} label={item.label} value={item.detail} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
-              {/* Services additionnels */}
-              {serviceItems.length > 0 && (
-                <>
-                  <Divider />
-                  <Section title="Services additionnels">
-                    {serviceItems.map((item, i) => (
-                      <Row key={i} label={item.label} value={item.detail} />
-                    ))}
-                  </Section>
-                </>
-              )}
-
-              {/* Préférences alimentaires */}
+              {/* 3 — Préférences et contraintes alimentaires */}
               {(dietItems.length > 0 || request.dietary_other) && (
-                <>
-                  <Divider />
-                  <Section title="Préférences et contraintes alimentaires">
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Préférences et contraintes
+                  </p>
+                  <div className="flex flex-col gap-3">
                     {dietItems.map((item) => (
                       <Row
                         key={item.label}
@@ -326,38 +352,23 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                     {request.dietary_other && (
                       <Row label="Autre" value={request.dietary_other} />
                     )}
-                  </Section>
-                </>
+                  </div>
+                </div>
               )}
 
-              {/* Budget */}
-              {(request.budget_global || request.budget_per_person) && (
-                <>
-                  <Divider />
-                  <Section title="Budget">
-                    {request.budget_global && (
-                      <Row label="Budget total" value={`${Number(request.budget_global).toLocaleString("fr-FR")} €`} />
-                    )}
-                    {request.budget_per_person && (
-                      <Row label="Budget par personne" value={`${Number(request.budget_per_person).toLocaleString("fr-FR")} €`} />
-                    )}
-                    {request.budget_flexibility && (
-                      <Row label="Flexibilité" value={FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility} />
-                    )}
-                  </Section>
-                </>
-              )}
-
-              {/* Message au traiteur */}
+              {/* 4 — Message au traiteur */}
               {request.message_to_caterer && (
-                <>
-                  <Divider />
-                  <Section title="Message au traiteur">
-                    <p className="text-xs text-black whitespace-pre-wrap italic" style={mFont}>
-                      {request.message_to_caterer}
-                    </p>
-                  </Section>
-                </>
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                  <p
+                    className="font-display font-bold text-xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    Message au traiteur
+                  </p>
+                  <p className="text-sm text-black whitespace-pre-wrap italic leading-relaxed" style={mFont}>
+                    {request.message_to_caterer}
+                  </p>
+                </div>
               )}
             </div>
 
@@ -441,7 +452,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
               )}
 
               {/* 5 — Budget résumé */}
-              {(request.budget_global || request.budget_per_person) && (
+              {(request.budget_global || request.budget_per_person || request.budget_flexibility) && (
                 <div className="flex flex-col gap-3">
                   {request.budget_global && (
                     <div className="flex items-center justify-between">
@@ -462,6 +473,14 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                       </div>
                       <span className="text-sm font-bold text-black" style={mFont}>
                         {Number(request.budget_per_person).toLocaleString("fr-FR")} €
+                      </span>
+                    </div>
+                  )}
+                  {request.budget_flexibility && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[#6B7280]" style={mFont}>Flexibilité</span>
+                      <span className="text-sm font-bold text-black" style={mFont}>
+                        {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
                       </span>
                     </div>
                   )}

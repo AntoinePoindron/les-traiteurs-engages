@@ -326,10 +326,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
             <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
 
               {/* 0 — Résumé scannable (4 infos clés en un clin d'œil) */}
-              <div
-                className="rounded-lg p-5 flex flex-col gap-3"
-                style={{ backgroundColor: "#F5F1E8" }}
-              >
+              <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex items-center gap-2 min-w-0">
                     <div

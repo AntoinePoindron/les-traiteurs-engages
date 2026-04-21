@@ -447,7 +447,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
               {/* 2 — La prestation (boissons + services additionnels) */}
               {(showDrinks || showServices) && (
-                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
                   <p
                     className="font-display font-bold text-xl text-black"
                     style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
@@ -459,33 +459,37 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Boissons
                       </p>
-                      <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap gap-1.5">
                         {request.drinks_details ? (
                           request.drinks_details
                             .split(/[,\n]+/)
                             .map((item) => item.trim())
                             .filter(Boolean)
-                            .map((item, i) => <Row key={i} label={item} />)
+                            .map((item, i) => (
+                              <Chip key={i} label={item} tone="drink" />
+                            ))
                         ) : (
-                          <Row label="Boissons incluses" />
+                          <Chip label="Boissons incluses" tone="drink" />
                         )}
                       </div>
                     </div>
                   )}
-                  {showDrinks && showServices && <Divider />}
                   {showServices && (
                     <div className="flex flex-col gap-2">
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Services additionnels
                       </p>
-                      <div className="flex flex-col gap-3">
-                        {request.service_waitstaff && <Row label="Personnel" />}
+                      <div className="flex flex-wrap gap-1.5">
+                        {request.service_waitstaff && <Chip label="Personnel" tone="service" />}
                         {request.service_equipment && (
-                          <Row label="Matériel" value={request.service_other ?? undefined} />
+                          <Chip
+                            label={request.service_other ? `Matériel · ${request.service_other}` : "Matériel"}
+                            tone="service"
+                          />
                         )}
-                        {request.service_decoration && <Row label="Décoration" />}
+                        {request.service_decoration && <Chip label="Décoration" tone="service" />}
                         {request.service_other && !request.service_equipment && (
-                          <Row label="Autre" value={request.service_other} />
+                          <Chip label={`Autre · ${request.service_other}`} tone="service" />
                         )}
                       </div>
                     </div>
@@ -502,14 +506,20 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   >
                     Préférences et contraintes
                   </p>
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-1.5">
                     {dietaryRows.map((row) => (
-                      <Row key={row.label} label={row.label} />
+                      <Chip key={row.label} label={row.label} tone="diet" />
                     ))}
-                    {request.dietary_other && (
-                      <Row label="Autre" value={request.dietary_other} />
-                    )}
                   </div>
+                  {request.dietary_other && (
+                    <div
+                      className="rounded-lg p-3 text-xs"
+                      style={{ backgroundColor: "#F5F1E8", color: "#313131", fontFamily: "Marianne, system-ui, sans-serif" }}
+                    >
+                      <span className="font-bold">Autre · </span>
+                      {request.dietary_other}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -522,12 +532,15 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   >
                     Message du client
                   </p>
-                  <p
-                    className="text-sm text-black whitespace-pre-wrap italic leading-relaxed"
-                    style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                  <div
+                    className="pl-4 py-1 border-l-2 text-sm text-[#313131] whitespace-pre-wrap italic leading-relaxed"
+                    style={{
+                      borderLeftColor: "#1A3A52",
+                      fontFamily: "Marianne, system-ui, sans-serif",
+                    }}
                   >
                     {request.description}
-                  </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -852,6 +865,29 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 function Divider() {
   return <div className="border-t border-[#f2f2f2]" />;
+}
+
+function Chip({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "drink" | "service" | "diet";
+}) {
+  const palette: Record<typeof tone, { bg: string; fg: string }> = {
+    drink:   { bg: "#E0F2FE", fg: "#075985" }, // bleu clair
+    service: { bg: "#F0F4F7", fg: "#1A3A52" }, // navy doux
+    diet:    { bg: "#DCFCE7", fg: "#16A34A" }, // vert
+  };
+  const { bg, fg } = palette[tone];
+  return (
+    <span
+      className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold"
+      style={{ backgroundColor: bg, color: fg, fontFamily: "Marianne, system-ui, sans-serif" }}
+    >
+      {label}
+    </span>
+  );
 }
 
 function QuoteSummary({ quote, children }: { quote: Quote; children?: React.ReactNode }) {

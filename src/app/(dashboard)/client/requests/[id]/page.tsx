@@ -456,6 +456,12 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
               {/* 1 — Infos + actions sur la demande (l'objet) */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
+              <p
+                className="font-display font-bold text-xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                Récapitulatif
+              </p>
 
 
               {/* 2 — Demande en cours d'examen (état soumise, pas encore de devis) */}

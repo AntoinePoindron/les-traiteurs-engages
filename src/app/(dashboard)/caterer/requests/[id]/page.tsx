@@ -574,6 +574,12 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
               {/* Bloc demande : budget + CTAs — concerne l'objet */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
+              <p
+                className="font-display font-bold text-xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                Récapitulatif
+              </p>
               {/* Budget — mêmes styles (icône + label + valeur) que le bandeau résumé */}
               {(request.budget_global != null || request.budget_per_person != null || request.budget_flexibility) && (
                 <div className="flex flex-col gap-3">

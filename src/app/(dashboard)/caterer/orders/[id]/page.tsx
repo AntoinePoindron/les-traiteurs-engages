@@ -215,8 +215,34 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
           {/* Main layout */}
           <div className="flex gap-6 items-start">
 
-            {/* ── Colonne gauche : détails du devis ── */}
+            {/* ── Colonne gauche : résumé événement + détails du devis ── */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
+
+              {/* Résumé événement — sans titre, en haut de la colonne */}
+              <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <IconRow icon={Utensils} label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
+                  <IconRow icon={Calendar} label="Date" value={fmtDate(qr.event_date)} />
+                  {(qr.event_start_time || qr.event_end_time) && (
+                    <IconRow
+                      icon={Clock}
+                      label="Horaires"
+                      value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")}
+                    />
+                  )}
+                  <IconRow icon={MapPin} label="Lieu" value={qr.event_address ?? order.delivery_address} />
+                  <IconRow icon={Users} label="Convives" value={`${qr.guest_count} personnes`} />
+                </div>
+                {qr.description && (
+                  <div
+                    className="rounded-lg p-3 text-xs"
+                    style={{ backgroundColor: "#F5F1E8", color: "#000", ...mFont }}
+                  >
+                    <span className="font-bold">Type d&apos;événement · </span>
+                    {qr.description}
+                  </div>
+                )}
+              </div>
 
               {/* Prestations */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
@@ -372,31 +398,6 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 orderId={order.id}
                 messagesHref={threadId ? `/caterer/messages?thread=${threadId}` : "/caterer/messages"}
               />
-
-              {/* Détails événement — icône + label + valeur */}
-              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                  Événement
-                </p>
-                <div className="flex flex-col gap-3">
-                  <IconRow icon={Utensils} label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
-                  <IconRow icon={Calendar} label="Date" value={fmtDate(qr.event_date)} />
-                  {(qr.event_start_time || qr.event_end_time) && (
-                    <IconRow icon={Clock} label="Horaires" value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")} />
-                  )}
-                  <IconRow icon={MapPin} label="Lieu" value={qr.event_address ?? order.delivery_address} />
-                  <IconRow icon={Users} label="Convives" value={`${qr.guest_count} personnes`} />
-                </div>
-                {qr.description && (
-                  <div
-                    className="rounded-lg p-3 text-xs"
-                    style={{ backgroundColor: "#F5F1E8", color: "#000", ...mFont }}
-                  >
-                    <span className="font-bold">Type d&apos;événement · </span>
-                    {qr.description}
-                  </div>
-                )}
-              </div>
 
               {/* Livraison */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-4">

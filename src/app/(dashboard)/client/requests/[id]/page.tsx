@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag, Pencil, FileText } from "lucide-react";
+import { ChevronLeft, CheckCircle, Clock, Euro, Users, ShoppingBag, Pencil, FileText, Calendar, MapPin, Utensils, Percent } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
@@ -272,29 +272,102 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
           <div className="flex flex-col md:flex-row gap-6 items-start">
 
-            {/* ── Left : détails (4 blocs thématiques) ── */}
+            {/* ── Left : résumé + détails ── */}
             <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
 
-              {/* 1 — L'événement (quand / où / qui / combien) */}
-              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                <p
-                  className="font-display font-bold text-xl text-black"
-                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-                >
-                  L&apos;événement
-                </p>
-                <div className="flex flex-col gap-3">
-                  <Row label="Type de prestation" value={serviceLabel + (serviceLabelSecondary ? ` + ${serviceLabelSecondary}` : "")} />
-                  <Row label="Date" value={eventDate} />
-                  {(request.event_start_time || request.event_end_time) && (
-                    <Row label="Horaires" value={[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")} />
-                  )}
-                  <Row label="Lieu" value={request.event_address} />
-                  <Row label="Nombre de personnes" value={`${request.guest_count} personnes`} />
-                  {request.description && (
-                    <Row label="Type d'événement" value={request.description} />
-                  )}
+              {/* 0 — Résumé scannable (4 infos clés + type d'événement) */}
+              <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                    >
+                      <Calendar size={15} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Date
+                      </span>
+                      <span className="text-sm font-bold text-black truncate" style={mFont}>
+                        {eventDate}
+                        {(request.event_start_time || request.event_end_time) && (
+                          <span className="font-normal">
+                            {" · "}
+                            {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                    >
+                      <MapPin size={15} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Lieu
+                      </span>
+                      <span className="text-sm font-bold text-black truncate" style={mFont}>
+                        {request.event_address}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                    >
+                      <Users size={15} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Convives
+                      </span>
+                      <span className="text-sm font-bold text-black truncate" style={mFont}>
+                        {request.guest_count} personnes
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                    >
+                      <Utensils size={15} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                        Prestation
+                      </span>
+                      <span className="text-sm font-bold text-black truncate" style={mFont}>
+                        {serviceLabel}
+                        {serviceLabelSecondary && (
+                          <span className="font-normal">
+                            {" + "}
+                            {serviceLabelSecondary}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
                 </div>
+
+                {request.description && (
+                  <div
+                    className="rounded-lg p-3 text-xs"
+                    style={{ backgroundColor: "#F5F1E8", color: "#000", ...mFont }}
+                  >
+                    <span className="font-bold">Type d&apos;événement · </span>
+                    {request.description}
+                  </div>
+                )}
               </div>
 
               {/* 2 — La prestation (boissons + services additionnels) */}
@@ -308,7 +381,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                   </p>
                   {drinkItems.length > 0 && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", ...mFont }}>
+                      <p className="text-[11px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
                         Boissons
                       </p>
                       <div className="flex flex-col gap-3">
@@ -319,7 +392,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                   {drinkItems.length > 0 && serviceItems.length > 0 && <Divider />}
                   {serviceItems.length > 0 && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", ...mFont }}>
+                      <p className="text-[11px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
                         Services additionnels
                       </p>
                       <div className="flex flex-col gap-3">
@@ -451,37 +524,61 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                 </>
               )}
 
-              {/* 5 — Budget résumé */}
+              {/* 5 — Budget résumé (icône + label + valeur) */}
               {(request.budget_global || request.budget_per_person || request.budget_flexibility) && (
                 <div className="flex flex-col gap-3">
                   {request.budget_global && (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Euro size={14} className="text-[#6B7280]" />
-                        <span className="text-xs text-[#6B7280]" style={mFont}>Budget total</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      >
+                        <Euro size={15} style={{ color: "#1A3A52" }} />
                       </div>
-                      <span className="text-sm font-bold text-black" style={mFont}>
-                        {Number(request.budget_global).toLocaleString("fr-FR")} €
-                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                          Budget total
+                        </span>
+                        <span className="text-sm font-bold text-black truncate" style={mFont}>
+                          {Number(request.budget_global).toLocaleString("fr-FR")} €
+                        </span>
+                      </div>
                     </div>
                   )}
                   {request.budget_per_person && (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Users size={14} className="text-[#6B7280]" />
-                        <span className="text-xs text-[#6B7280]" style={mFont}>Par personne</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      >
+                        <Users size={15} style={{ color: "#1A3A52" }} />
                       </div>
-                      <span className="text-sm font-bold text-black" style={mFont}>
-                        {Number(request.budget_per_person).toLocaleString("fr-FR")} €
-                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                          Par personne
+                        </span>
+                        <span className="text-sm font-bold text-black truncate" style={mFont}>
+                          {Number(request.budget_per_person).toLocaleString("fr-FR")} €
+                        </span>
+                      </div>
                     </div>
                   )}
                   {request.budget_flexibility && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-[#6B7280]" style={mFont}>Flexibilité</span>
-                      <span className="text-sm font-bold text-black" style={mFont}>
-                        {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
-                      </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      >
+                        <Percent size={15} style={{ color: "#1A3A52" }} />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                          Flexibilité
+                        </span>
+                        <span className="text-sm font-bold text-black truncate" style={mFont}>
+                          {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>

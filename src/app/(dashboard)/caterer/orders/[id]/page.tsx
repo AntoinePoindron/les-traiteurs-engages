@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, FileText } from "lucide-react";
+import { ChevronLeft, FileText, Calendar, MapPin, Users, Utensils, Clock, Truck } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
@@ -373,40 +373,49 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 messagesHref={threadId ? `/caterer/messages?thread=${threadId}` : "/caterer/messages"}
               />
 
-              {/* Détails événement & livraison — infos de contexte */}
-              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
-                <div className="flex flex-col gap-4">
-                  <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Événement
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    <Row label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
-                    <Row label="Date" value={fmtDate(qr.event_date)} />
-                    {(qr.event_start_time || qr.event_end_time) && (
-                      <Row label="Horaires" value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")} />
-                    )}
-                    <Row label="Lieu" value={qr.event_address ?? order.delivery_address} />
-                    <Row label="Convives" value={`${qr.guest_count} personnes`} />
-                  </div>
-                  {qr.description && (
-                    <p className="text-xs text-[#6B7280] italic leading-relaxed" style={mFont}>
-                      &ldquo;{qr.description}&rdquo;
-                    </p>
+              {/* Détails événement — icône + label + valeur */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                  Événement
+                </p>
+                <div className="flex flex-col gap-3">
+                  <IconRow icon={Utensils} label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
+                  <IconRow icon={Calendar} label="Date" value={fmtDate(qr.event_date)} />
+                  {(qr.event_start_time || qr.event_end_time) && (
+                    <IconRow icon={Clock} label="Horaires" value={[qr.event_start_time, qr.event_end_time].filter(Boolean).join(" – ")} />
                   )}
+                  <IconRow icon={MapPin} label="Lieu" value={qr.event_address ?? order.delivery_address} />
+                  <IconRow icon={Users} label="Convives" value={`${qr.guest_count} personnes`} />
                 </div>
-
-                <div className="border-t border-[#f2f2f2]" />
-
-                <div className="flex flex-col gap-4">
-                  <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Livraison
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    <Row label="Date" value={fmtDate(order.delivery_date)} />
-                    <Row label="Adresse" value={order.delivery_address} />
-                    {order.notes && <Row label="Notes" value={order.notes} />}
+                {qr.description && (
+                  <div
+                    className="rounded-lg p-3 text-xs"
+                    style={{ backgroundColor: "#F5F1E8", color: "#000", ...mFont }}
+                  >
+                    <span className="font-bold">Type d&apos;événement · </span>
+                    {qr.description}
                   </div>
+                )}
+              </div>
+
+              {/* Livraison */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                  Livraison
+                </p>
+                <div className="flex flex-col gap-3">
+                  <IconRow icon={Calendar} label="Date" value={fmtDate(order.delivery_date)} />
+                  <IconRow icon={Truck} label="Adresse" value={order.delivery_address} />
                 </div>
+                {order.notes && (
+                  <div
+                    className="rounded-lg p-3 text-xs"
+                    style={{ backgroundColor: "#F5F1E8", color: "#000", ...mFont }}
+                  >
+                    <span className="font-bold">Notes · </span>
+                    {order.notes}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -424,6 +433,38 @@ function Row({ label, value }: { label: string; value?: string | null }) {
     <div className="flex gap-3 items-start justify-between">
       <p className="text-xs text-[#6B7280] shrink-0" style={mFont}>{label}</p>
       <p className="text-xs font-bold text-black text-right" style={mFont}>{value}</p>
+    </div>
+  );
+}
+
+/**
+ * Ligne "icône + label + valeur" — même style que le résumé des demandes.
+ */
+function IconRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value?: string | null;
+}) {
+  if (!value) return null;
+  const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+      >
+        <Icon size={15} style={{ color: "#1A3A52" }} />
+      </div>
+      <div className="flex flex-col min-w-0">
+        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+          {label}
+        </span>
+        <span className="text-sm font-bold text-black truncate" style={mFont}>{value}</span>
+      </div>
     </div>
   );
 }

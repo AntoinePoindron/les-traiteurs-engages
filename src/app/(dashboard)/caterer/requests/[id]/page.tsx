@@ -513,9 +513,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Boissons
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-x-3 gap-y-2">
                         {drinkItems.map((item, i) => (
-                          <ItemWithDetail key={i} label={item.label} detail={item.detail} />
+                          <ChipWithDetail key={i} label={item.label} detail={item.detail} tone="drink" />
                         ))}
                       </div>
                     </div>
@@ -526,9 +526,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Services additionnels
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-x-3 gap-y-2">
                         {serviceItems.map((item, i) => (
-                          <ItemWithDetail key={i} label={item.label} detail={item.detail} />
+                          <ChipWithDetail key={i} label={item.label} detail={item.detail} tone="service" />
                         ))}
                       </div>
                     </div>
@@ -913,20 +913,27 @@ function Divider() {
 }
 
 /**
- * Item d'une liste de prestation avec un label principal et un détail
- * optionnel affiché en seconde ligne en gris.
+ * Badge coloré (Chip) + précision optionnelle affichée en dessous
+ * en petit gris italique, légèrement indentée.
  */
-function ItemWithDetail({ label, detail }: { label: string; detail?: string | null }) {
+function ChipWithDetail({
+  label,
+  detail,
+  tone,
+}: {
+  label: string;
+  detail?: string | null;
+  tone: "drink" | "service" | "diet";
+}) {
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
   return (
-    <div className="flex items-start gap-2">
-      <span className="mt-1 w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "#1A3A52" }} />
-      <div className="flex flex-col min-w-0">
-        <span className="text-sm font-bold text-black" style={mFont}>{label}</span>
-        {detail && (
-          <span className="text-xs text-[#6B7280] leading-relaxed" style={mFont}>{detail}</span>
-        )}
-      </div>
+    <div className="flex flex-col items-start gap-1">
+      <Chip label={label} tone={tone} />
+      {detail && (
+        <span className="pl-2.5 text-xs text-[#6B7280] italic leading-relaxed" style={mFont}>
+          {detail}
+        </span>
+      )}
     </div>
   );
 }

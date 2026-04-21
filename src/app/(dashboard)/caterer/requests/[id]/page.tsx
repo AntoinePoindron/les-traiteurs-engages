@@ -110,11 +110,22 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
         event_address, guest_count,
         budget_global, budget_per_person, budget_flexibility,
         meal_type, is_full_day, meal_type_secondary,
-        dietary_vegetarian, dietary_vegan, dietary_halal,
-        dietary_kosher, dietary_gluten_free, dietary_other,
+        dietary_vegetarian, dietary_vegetarian_count,
+        dietary_vegan, dietary_halal, dietary_halal_count,
+        dietary_kosher, dietary_gluten_free, dietary_gluten_free_count,
+        dietary_bio, dietary_other,
         drinks_included, drinks_details,
-        service_waitstaff, service_equipment, service_decoration, service_other,
-        description, status, created_at,
+        drinks_water_still, drinks_water_sparkling,
+        drinks_soft, drinks_soft_details,
+        drinks_alcohol, drinks_alcohol_details,
+        drinks_hot,
+        service_waitstaff,
+        service_equipment,
+        service_equipment_verres, service_equipment_nappes,
+        service_equipment_tables, service_equipment_other,
+        service_setup, service_setup_time, service_setup_other,
+        service_decoration, service_other,
+        description, message_to_caterer, status, created_at,
         companies ( name, logo_url ),
         users ( id, first_name, last_name, email )
       )
@@ -249,23 +260,63 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     ? `${clientUser.first_name ?? ""} ${clientUser.last_name ?? ""}`.trim()
     : null;
 
-  // Dietary items
-  const dietaryRows: { label: string }[] = [];
-  if (request.dietary_vegetarian) dietaryRows.push({ label: "Végétarien" });
-  if (request.dietary_vegan) dietaryRows.push({ label: "Végan" });
-  if (request.dietary_halal) dietaryRows.push({ label: "Halal" });
-  if (request.dietary_kosher) dietaryRows.push({ label: "Kasher" });
-  if (request.dietary_gluten_free) dietaryRows.push({ label: "Sans gluten" });
+  // ── Boissons (structured, with details inline) ─────────────
+  const drinkItems: { label: string; detail?: string }[] = [];
+  if (request.drinks_water_still)     drinkItems.push({ label: "Eau plate" });
+  if (request.drinks_water_sparkling) drinkItems.push({ label: "Eau gazeuse" });
+  if (request.drinks_soft)            drinkItems.push({ label: "Sodas / Soft", detail: request.drinks_soft_details ?? undefined });
+  if (request.drinks_alcohol)         drinkItems.push({ label: "Alcool", detail: request.drinks_alcohol_details ?? undefined });
+  if (request.drinks_hot)             drinkItems.push({ label: "Thé, Café" });
+  // Fallback pour les anciennes demandes qui utilisaient uniquement drinks_details
+  if (drinkItems.length === 0 && request.drinks_details) {
+    request.drinks_details
+      .split(/[,\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((s) => drinkItems.push({ label: s }));
+  }
 
-  const showDrinks =
-    request.drinks_included || Boolean(request.drinks_details);
-  const showServices =
-    request.service_waitstaff ||
-    request.service_equipment ||
-    request.service_decoration ||
-    Boolean(request.service_other);
-  const showDietary = dietaryRows.length > 0 || Boolean(request.dietary_other);
-  const showMessage = Boolean(request.description);
+  // ── Services additionnels (structured with sub-detail) ─────
+  const serviceItems: { label: string; detail?: string }[] = [];
+  if (request.service_waitstaff) serviceItems.push({ label: "Personnel" });
+  if (request.service_equipment) {
+    const equipmentSub = [
+      request.service_equipment_verres && "Verres",
+      request.service_equipment_nappes && "Nappes et serviettes",
+      request.service_equipment_tables && "Tables",
+    ].filter(Boolean).join(", ");
+    serviceItems.push({
+      label: "Matériel",
+      detail: [equipmentSub, request.service_equipment_other].filter(Boolean).join(" · ") || undefined,
+    });
+  } else if (request.service_other) {
+    serviceItems.push({ label: "Autre", detail: request.service_other });
+  }
+  if (request.service_setup) {
+    serviceItems.push({
+      label: "Installation et mise en place",
+      detail: [
+        request.service_setup_time && `à ${request.service_setup_time}`,
+        request.service_setup_other,
+      ].filter(Boolean).join(" · ") || undefined,
+    });
+  }
+  if (request.service_decoration) serviceItems.push({ label: "Décoration" });
+
+  // ── Dietary (with counts) ──────────────────────────────────
+  const dietItems: { label: string; count?: number | null }[] = [];
+  if (request.dietary_vegetarian)  dietItems.push({ label: "Végétarien",  count: request.dietary_vegetarian_count });
+  if (request.dietary_vegan)       dietItems.push({ label: "Végan" });
+  if (request.dietary_halal)       dietItems.push({ label: "Halal",       count: request.dietary_halal_count });
+  if (request.dietary_kosher)      dietItems.push({ label: "Kasher" });
+  if (request.dietary_gluten_free) dietItems.push({ label: "Sans gluten", count: request.dietary_gluten_free_count });
+  if (request.dietary_bio)         dietItems.push({ label: "Produits bio" });
+
+  const showDrinks   = drinkItems.length > 0;
+  const showServices = serviceItems.length > 0;
+  const showDietary  = dietItems.length > 0 || Boolean(request.dietary_other);
+  const showEventDescription = Boolean(request.description);
+  const showMessage  = Boolean(request.message_to_caterer);
 
   const isNew = assignment.status === "selected";
   const isClosed = assignment.status === "closed";
@@ -442,6 +493,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     label="Nombre de personnes"
                     value={`${request.guest_count} personnes`}
                   />
+                  {showEventDescription && (
+                    <Row label="Type d'événement" value={request.description ?? undefined} />
+                  )}
                 </div>
               </div>
 
@@ -459,38 +513,23 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Boissons
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {request.drinks_details ? (
-                          request.drinks_details
-                            .split(/[,\n]+/)
-                            .map((item) => item.trim())
-                            .filter(Boolean)
-                            .map((item, i) => (
-                              <Chip key={i} label={item} tone="drink" />
-                            ))
-                        ) : (
-                          <Chip label="Boissons incluses" tone="drink" />
-                        )}
+                      <div className="flex flex-col gap-2">
+                        {drinkItems.map((item, i) => (
+                          <ItemWithDetail key={i} label={item.label} detail={item.detail} />
+                        ))}
                       </div>
                     </div>
                   )}
+                  {showDrinks && showServices && <Divider />}
                   {showServices && (
                     <div className="flex flex-col gap-2">
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Services additionnels
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {request.service_waitstaff && <Chip label="Personnel" tone="service" />}
-                        {request.service_equipment && (
-                          <Chip
-                            label={request.service_other ? `Matériel · ${request.service_other}` : "Matériel"}
-                            tone="service"
-                          />
-                        )}
-                        {request.service_decoration && <Chip label="Décoration" tone="service" />}
-                        {request.service_other && !request.service_equipment && (
-                          <Chip label={`Autre · ${request.service_other}`} tone="service" />
-                        )}
+                      <div className="flex flex-col gap-2">
+                        {serviceItems.map((item, i) => (
+                          <ItemWithDetail key={i} label={item.label} detail={item.detail} />
+                        ))}
                       </div>
                     </div>
                   )}
@@ -506,11 +545,17 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   >
                     Préférences et contraintes
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {dietaryRows.map((row) => (
-                      <Chip key={row.label} label={row.label} tone="diet" />
-                    ))}
-                  </div>
+                  {dietItems.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {dietItems.map((item) => (
+                        <Chip
+                          key={item.label}
+                          label={item.count ? `${item.label} · ${item.count} pers.` : item.label}
+                          tone="diet"
+                        />
+                      ))}
+                    </div>
+                  )}
                   {request.dietary_other && (
                     <div
                       className="rounded-lg p-3 text-xs"
@@ -523,7 +568,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                 </div>
               )}
 
-              {/* 4 — Message du client */}
+              {/* 4 — Message au traiteur */}
               {showMessage && (
                 <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
                   <p
@@ -539,7 +584,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       fontFamily: "Marianne, system-ui, sans-serif",
                     }}
                   >
-                    {request.description}
+                    {request.message_to_caterer}
                   </div>
                 </div>
               )}
@@ -865,6 +910,25 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 function Divider() {
   return <div className="border-t border-[#f2f2f2]" />;
+}
+
+/**
+ * Item d'une liste de prestation avec un label principal et un détail
+ * optionnel affiché en seconde ligne en gris.
+ */
+function ItemWithDetail({ label, detail }: { label: string; detail?: string | null }) {
+  const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-1 w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: "#1A3A52" }} />
+      <div className="flex flex-col min-w-0">
+        <span className="text-sm font-bold text-black" style={mFont}>{label}</span>
+        {detail && (
+          <span className="text-xs text-[#6B7280] leading-relaxed" style={mFont}>{detail}</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Chip({

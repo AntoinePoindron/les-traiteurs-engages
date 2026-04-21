@@ -368,22 +368,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
               <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
 
 
-              {/* 2 — Commande associée (devis accepté) */}
-              {linkedOrderId && (
-                <>
-                  <Link
-                    href={`/client/orders/${linkedOrderId}`}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
-                    style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-                  >
-                    <ShoppingBag size={13} />
-                    Voir la commande
-                  </Link>
-                  <Divider />
-                </>
-              )}
-
-              {/* 3 — Demande en cours d'examen (état soumise, pas encore de devis) */}
+              {/* 2 — Demande en cours d'examen (état soumise, pas encore de devis) */}
               {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && (
                 <>
                   <div className="flex flex-col gap-2 py-2 items-center text-center">
@@ -481,6 +466,18 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* 6 — Commande associée (devis accepté) — en bas du panneau */}
+              {linkedOrderId && (
+                <Link
+                  href={`/client/orders/${linkedOrderId}`}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                  style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                >
+                  <ShoppingBag size={13} />
+                  Voir la commande
+                </Link>
               )}
               </div>
 

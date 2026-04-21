@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Calendar, Euro, ChevronLeft, ShoppingBag } from "lucide-react";
+import { Calendar, Euro, ChevronLeft, ShoppingBag, MapPin, Users } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
@@ -322,8 +322,94 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
           {/* Main grid */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
 
-            {/* ── Left : détails (4 blocs thématiques) ── */}
+            {/* ── Left : détails (résumé + 4 blocs thématiques) ── */}
             <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
+
+              {/* 0 — Résumé scannable (4 infos clés en un clin d'œil) */}
+              <div
+                className="rounded-lg p-5 flex flex-col gap-3"
+                style={{ backgroundColor: "#1A3A52" }}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+                    >
+                      <Calendar size={15} className="text-white" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-white/60" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Date
+                      </span>
+                      <span className="text-sm font-bold text-white truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {eventDate}
+                        {(request.event_start_time || request.event_end_time) && (
+                          <span className="font-normal">
+                            {" · "}
+                            {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+                    >
+                      <MapPin size={15} className="text-white" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-white/60" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Lieu
+                      </span>
+                      <span className="text-sm font-bold text-white truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {request.event_address}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+                    >
+                      <Users size={15} className="text-white" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-white/60" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Convives
+                      </span>
+                      <span className="text-sm font-bold text-white truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {request.guest_count} personnes
+                      </span>
+                    </div>
+                  </div>
+
+                  {(request.budget_global != null || request.budget_per_person != null) && (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+                      >
+                        <Euro size={15} className="text-white" />
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold uppercase text-white/60" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                          Budget
+                        </span>
+                        <span className="text-sm font-bold text-white truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                          {request.budget_global != null
+                            ? `${request.budget_global.toLocaleString("fr-FR")} € HT`
+                            : `${request.budget_per_person?.toLocaleString("fr-FR")} € HT / pers`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* 1 — L'événement */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-4">

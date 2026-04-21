@@ -218,8 +218,11 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
             {/* ── Colonne gauche : résumé événement + détails du devis ── */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
 
-              {/* Résumé événement — sans titre, en haut de la colonne */}
-              <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+              {/* Résumé événement en haut de la colonne */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                  L&apos;événement
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <IconRow icon={Utensils} label="Type" value={MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type} />
                   <IconRow icon={Calendar} label="Date" value={fmtDate(qr.event_date)} />

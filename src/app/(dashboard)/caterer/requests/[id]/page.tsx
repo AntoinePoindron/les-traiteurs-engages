@@ -376,7 +376,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
             {/* ── Left : détails (résumé + 4 blocs thématiques) ── */}
             <div className="flex-1 min-w-0 w-full flex flex-col gap-6">
 
-              {/* 0 — Résumé scannable (4 infos clés en un clin d'œil) */}
+              {/* 0 — Résumé scannable (4 infos clés + type d'événement) */}
               <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="flex items-center gap-2 min-w-0">
@@ -387,13 +387,13 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <Calendar size={15} style={{ color: "#1A3A52" }} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Date
                       </span>
-                      <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
                         {eventDate}
                         {(request.event_start_time || request.event_end_time) && (
-                          <span className="font-normal text-[#6B7280]">
+                          <span className="font-normal">
                             {" · "}
                             {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
                           </span>
@@ -410,10 +410,10 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <MapPin size={15} style={{ color: "#1A3A52" }} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Lieu
                       </span>
-                      <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
                         {request.event_address}
                       </span>
                     </div>
@@ -427,10 +427,10 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <Users size={15} style={{ color: "#1A3A52" }} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Convives
                       </span>
-                      <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
                         {request.guest_count} personnes
                       </span>
                     </div>
@@ -444,13 +444,13 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <Utensils size={15} style={{ color: "#1A3A52" }} />
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Prestation
                       </span>
-                      <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
                         {(MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type ?? "—")}
                         {request.is_full_day && request.meal_type_secondary && (
-                          <span className="font-normal text-[#6B7280]">
+                          <span className="font-normal">
                             {" + "}
                             {MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}
                           </span>
@@ -459,6 +459,17 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     </div>
                   </div>
                 </div>
+
+                {/* Type d'événement (tuile cream sous la grille) */}
+                {showEventDescription && (
+                  <div
+                    className="rounded-lg p-3 text-xs"
+                    style={{ backgroundColor: "#F5F1E8", color: "#000", fontFamily: "Marianne, system-ui, sans-serif" }}
+                  >
+                    <span className="font-bold">Type d&apos;événement · </span>
+                    {request.description}
+                  </div>
+                )}
               </div>
 
               {/* 1 — L'événement */}
@@ -493,9 +504,6 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     label="Nombre de personnes"
                     value={`${request.guest_count} personnes`}
                   />
-                  {showEventDescription && (
-                    <Row label="Type d'événement" value={request.description ?? undefined} />
-                  )}
                 </div>
               </div>
 
@@ -510,7 +518,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   </p>
                   {showDrinks && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <p className="text-[11px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Boissons
                       </p>
                       <div className="flex flex-col gap-3">
@@ -523,7 +531,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   {showDrinks && showServices && <Divider />}
                   {showServices && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      <p className="text-[11px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Services additionnels
                       </p>
                       <div className="flex flex-col gap-3">
@@ -605,13 +613,13 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                         style={{ backgroundColor: "#F5F1E8" }}
                       >
                         <span
-                          className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+                          className="text-[10px] font-bold uppercase text-black"
                           style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
                         >
                           Budget total
                         </span>
                         <span
-                          className="font-display font-bold text-xl text-[#1A3A52] leading-tight"
+                          className="font-display font-bold text-xl text-black leading-tight"
                           style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                         >
                           {request.budget_global.toLocaleString("fr-FR")} €
@@ -624,13 +632,13 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                         style={{ backgroundColor: "#F5F1E8" }}
                       >
                         <span
-                          className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+                          className="text-[10px] font-bold uppercase text-black"
                           style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
                         >
                           Par personne
                         </span>
                         <span
-                          className="font-display font-bold text-xl text-[#1A3A52] leading-tight"
+                          className="font-display font-bold text-xl text-black leading-tight"
                           style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                         >
                           {request.budget_per_person.toLocaleString("fr-FR")} €

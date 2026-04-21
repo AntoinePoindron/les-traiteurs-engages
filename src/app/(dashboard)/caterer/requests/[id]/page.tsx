@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Calendar, Euro, ChevronLeft, ShoppingBag, MapPin, Users } from "lucide-react";
+import { Calendar, Euro, ChevronLeft, ShoppingBag, MapPin, Users, Utensils } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
@@ -385,26 +385,28 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                     </div>
                   </div>
 
-                  {(request.budget_global != null || request.budget_per_person != null) && (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
-                      >
-                        <Euro size={15} style={{ color: "#1A3A52" }} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
-                          Budget
-                        </span>
-                        <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                          {request.budget_global != null
-                            ? `${request.budget_global.toLocaleString("fr-FR")} € HT`
-                            : `${request.budget_per_person?.toLocaleString("fr-FR")} € HT / pers`}
-                        </span>
-                      </div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                    >
+                      <Utensils size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                  )}
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[10px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        Prestation
+                      </span>
+                      <span className="text-sm font-bold text-[#1A3A52] truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {(MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type ?? "—")}
+                        {request.is_full_day && request.meal_type_secondary && (
+                          <span className="font-normal text-[#6B7280]">
+                            {" + "}
+                            {MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -535,27 +537,57 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
               {/* Bloc demande : budget + CTAs — concerne l'objet */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
-              {/* Budget */}
-              <div className="flex flex-col gap-4">
-                {request.budget_global != null && (
-                  <Row
-                    label="Budget total"
-                    value={`${request.budget_global.toLocaleString("fr-FR")} €`}
-                  />
-                )}
-                {request.budget_per_person != null && (
-                  <Row
-                    label="Budget par personne"
-                    value={`${request.budget_per_person.toLocaleString("fr-FR")} €`}
-                  />
-                )}
-                {request.budget_flexibility && (
-                  <Row
-                    label="Flexibilité"
-                    value={FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
-                  />
-                )}
-              </div>
+              {/* Budget — présentation visuelle forte */}
+              {(request.budget_global != null || request.budget_per_person != null || request.budget_flexibility) && (
+                <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    {request.budget_global != null && (
+                      <div
+                        className="flex flex-col gap-1 p-3 rounded-lg"
+                        style={{ backgroundColor: "#F5F1E8" }}
+                      >
+                        <span
+                          className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+                          style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
+                        >
+                          Budget total
+                        </span>
+                        <span
+                          className="font-display font-bold text-xl text-[#1A3A52] leading-tight"
+                          style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                        >
+                          {request.budget_global.toLocaleString("fr-FR")} €
+                        </span>
+                      </div>
+                    )}
+                    {request.budget_per_person != null && (
+                      <div
+                        className="flex flex-col gap-1 p-3 rounded-lg"
+                        style={{ backgroundColor: "#F5F1E8" }}
+                      >
+                        <span
+                          className="text-[10px] font-bold uppercase text-[#9CA3AF]"
+                          style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
+                        >
+                          Par personne
+                        </span>
+                        <span
+                          className="font-display font-bold text-xl text-[#1A3A52] leading-tight"
+                          style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                        >
+                          {request.budget_per_person.toLocaleString("fr-FR")} €
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {request.budget_flexibility && (
+                    <Row
+                      label="Flexibilité"
+                      value={FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* CTAs (style harmonisé avec le client) */}
               {isNew && (

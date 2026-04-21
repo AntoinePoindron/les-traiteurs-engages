@@ -513,9 +513,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Boissons
                       </p>
-                      <div className="flex flex-col gap-2.5">
+                      <div className="flex flex-col gap-3">
                         {drinkItems.map((item, i) => (
-                          <ListItem key={i} label={item.label} detail={item.detail} />
+                          <Row key={i} label={item.label} value={item.detail ?? undefined} />
                         ))}
                       </div>
                     </div>
@@ -526,9 +526,9 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                       <p className="text-[11px] font-bold uppercase text-[#9CA3AF]" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
                         Services additionnels
                       </p>
-                      <div className="flex flex-col gap-2.5">
+                      <div className="flex flex-col gap-3">
                         {serviceItems.map((item, i) => (
-                          <ListItem key={i} label={item.label} detail={item.detail} />
+                          <Row key={i} label={item.label} value={item.detail ?? undefined} />
                         ))}
                       </div>
                     </div>
@@ -910,22 +910,6 @@ function Row({ label, value }: { label: string; value?: string }) {
 
 function Divider() {
   return <div className="border-t border-[#f2f2f2]" />;
-}
-
-/**
- * Item de liste : label gras sur une ligne, précision optionnelle en
- * petit gris dessous. Pas de puce ni de badge.
- */
-function ListItem({ label, detail }: { label: string; detail?: string | null }) {
-  const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-sm font-bold text-black" style={mFont}>{label}</span>
-      {detail && (
-        <span className="text-xs text-[#6B7280] leading-relaxed" style={mFont}>{detail}</span>
-      )}
-    </div>
-  );
 }
 
 function Chip({

@@ -454,159 +454,158 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
             {/* ── Right : statut demande + devis + traiteur ── */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* 1 — Infos + actions sur la demande (l'objet) */}
+              {/* 1 — Récapitulatif : budget en haut, devis reçus en dessous */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
-              <p
-                className="font-display font-bold text-xl text-black"
-                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
-              >
-                Récapitulatif
-              </p>
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Récapitulatif
+                </p>
 
-
-              {/* 2 — Demande en cours d'examen (état soumise, pas encore de devis) */}
-              {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && (
-                <>
-                  <div className="flex flex-col gap-2 py-2 items-center text-center">
-                    <Clock size={28} className="text-[#D1D5DB]" />
-                    <p className="text-sm font-bold text-black" style={mFont}>Demande en cours d&apos;examen</p>
-                    <p className="text-xs text-[#9CA3AF]" style={mFont}>
-                      Notre équipe vérifie votre demande avant de la transmettre aux traiteurs.
-                    </p>
-                  </div>
-                  <Divider />
-                </>
-              )}
-
-              {/* 4 — Devis reçus */}
-              {(visibleQuotes.length > 0 || request.is_compare_mode) && (
-                <>
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                        Devis reçus
-                      </p>
-                      {request.is_compare_mode && (
-                        <span
-                          className="flex items-center gap-0.5 text-xs font-bold shrink-0"
-                          style={{
-                            color: visibleQuotes.length === 0 ? "#B45309" : "#0284C7",
-                            ...mFont,
-                          }}
+                {/* Budget — juste sous le titre */}
+                {(request.budget_global || request.budget_per_person || request.budget_flexibility) && (
+                  <div className="flex flex-col gap-3">
+                    {request.budget_global && (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
                         >
-                          <FileText size={10} className="shrink-0" />
-                          {visibleQuotes.length}/3 devis
-                        </span>
+                          <Euro size={15} style={{ color: "#1A3A52" }} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                            Budget total
+                          </span>
+                          <span className="text-sm font-bold text-black truncate" style={mFont}>
+                            {Number(request.budget_global).toLocaleString("fr-FR")} €
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {request.budget_per_person && (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                        >
+                          <Users size={15} style={{ color: "#1A3A52" }} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                            Par personne
+                          </span>
+                          <span className="text-sm font-bold text-black truncate" style={mFont}>
+                            {Number(request.budget_per_person).toLocaleString("fr-FR")} €
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {request.budget_flexibility && (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                        >
+                          <Percent size={15} style={{ color: "#1A3A52" }} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                            Flexibilité
+                          </span>
+                          <span className="text-sm font-bold text-black truncate" style={mFont}>
+                            {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Demande en cours d'examen (état soumise, pas encore de devis) */}
+                {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && (
+                  <>
+                    <Divider />
+                    <div className="flex flex-col gap-2 py-2 items-center text-center">
+                      <Clock size={28} className="text-[#D1D5DB]" />
+                      <p className="text-sm font-bold text-black" style={mFont}>Demande en cours d&apos;examen</p>
+                      <p className="text-xs text-[#9CA3AF]" style={mFont}>
+                        Notre équipe vérifie votre demande avant de la transmettre aux traiteurs.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Devis reçus — sous-label */}
+                {(visibleQuotes.length > 0 || request.is_compare_mode) && (
+                  <>
+                    <Divider />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[11px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
+                          Devis reçus
+                        </p>
+                        {request.is_compare_mode && (
+                          <span
+                            className="flex items-center gap-0.5 text-xs font-bold shrink-0"
+                            style={{
+                              color: visibleQuotes.length === 0 ? "#B45309" : "#0284C7",
+                              ...mFont,
+                            }}
+                          >
+                            <FileText size={10} className="shrink-0" />
+                            {visibleQuotes.length}/3 devis
+                          </span>
+                        )}
+                      </div>
+                      {visibleQuotes.length === 0 && request.is_compare_mode && (
+                        <p className="text-xs text-[#6B7280]" style={mFont}>
+                          En attente des 3 premiers devis. Vous serez notifié au fur et à mesure.
+                        </p>
+                      )}
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {visibleQuotes.map((quote: any) => (
+                        <QuoteCard
+                          key={quote.id}
+                          quote={quote}
+                          requestId={id}
+                          eventDate={request.event_date}
+                          eventAddress={request.event_address}
+                          guestCount={request.guest_count}
+                          mealTypeLabel={serviceLabel}
+                          isAccepted={quote.status === "accepted"}
+                          isRefused={quote.status === "refused"}
+                          canAccept={!acceptedQuote && quote.status === "sent"}
+                        />
+                      ))}
+                      {hasPendingQuote && !acceptedQuote && request.status !== "cancelled" && request.status !== "completed" && (
+                        <form action={cancelRequestAction}>
+                          <input type="hidden" name="request_id" value={id} />
+                          <button
+                            type="submit"
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FFF5F5] transition-colors"
+                            style={mFont}
+                          >
+                            Ne retenir aucun devis
+                          </button>
+                        </form>
                       )}
                     </div>
-                    {visibleQuotes.length === 0 && request.is_compare_mode && (
-                      <p className="text-xs text-[#6B7280]" style={mFont}>
-                        En attente des 3 premiers devis. Vous serez notifié au fur et à mesure.
-                      </p>
-                    )}
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {visibleQuotes.map((quote: any) => (
-                      <QuoteCard
-                        key={quote.id}
-                        quote={quote}
-                        requestId={id}
-                        eventDate={request.event_date}
-                        eventAddress={request.event_address}
-                        guestCount={request.guest_count}
-                        mealTypeLabel={serviceLabel}
-                        isAccepted={quote.status === "accepted"}
-                        isRefused={quote.status === "refused"}
-                        canAccept={!acceptedQuote && quote.status === "sent"}
-                      />
-                    ))}
-                    {hasPendingQuote && !acceptedQuote && request.status !== "cancelled" && request.status !== "completed" && (
-                      <form action={cancelRequestAction}>
-                        <input type="hidden" name="request_id" value={id} />
-                        <button
-                          type="submit"
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FFF5F5] transition-colors"
-                          style={mFont}
-                        >
-                          Ne retenir aucun devis
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                  <Divider />
-                </>
-              )}
+                  </>
+                )}
 
-              {/* 5 — Budget résumé (icône + label + valeur) */}
-              {(request.budget_global || request.budget_per_person || request.budget_flexibility) && (
-                <div className="flex flex-col gap-3">
-                  {request.budget_global && (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
-                      >
-                        <Euro size={15} style={{ color: "#1A3A52" }} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                          Budget total
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={mFont}>
-                          {Number(request.budget_global).toLocaleString("fr-FR")} €
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {request.budget_per_person && (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
-                      >
-                        <Users size={15} style={{ color: "#1A3A52" }} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                          Par personne
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={mFont}>
-                          {Number(request.budget_per_person).toLocaleString("fr-FR")} €
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {request.budget_flexibility && (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
-                      >
-                        <Percent size={15} style={{ color: "#1A3A52" }} />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                          Flexibilité
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={mFont}>
-                          {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 6 — Commande associée (devis accepté) — en bas du panneau */}
-              {linkedOrderId && (
-                <Link
-                  href={`/client/orders/${linkedOrderId}`}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
-                  style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
-                >
-                  <ShoppingBag size={13} />
-                  Voir la commande
-                </Link>
-              )}
+                {/* Commande associée (devis accepté) — en bas du panneau */}
+                {linkedOrderId && (
+                  <Link
+                    href={`/client/orders/${linkedOrderId}`}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                    style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                  >
+                    <ShoppingBag size={13} />
+                    Voir la commande
+                  </Link>
+                )}
               </div>
 
               {/* 2 — Traiteur contacté (demande directe) — carte complète, sous la demande */}
@@ -729,7 +728,7 @@ function QuoteCard({
 
   return (
     <div
-      className="rounded-lg p-4 flex flex-col gap-3"
+      className="rounded-lg px-3 py-2.5 flex flex-col gap-2"
       style={{
         backgroundColor: isAccepted ? "#DCFCE7" : isRefused ? "#F9FAFB" : "#F5F1E8",
         border: isAccepted
@@ -740,74 +739,54 @@ function QuoteCard({
         opacity: isRefused ? 0.75 : 1,
       }}
     >
-      {/* Traiteur */}
+      {/* Ligne 1 : logo + traiteur + statut + montant HT à droite */}
       <div className="flex items-center gap-2">
         {caterer?.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={caterer.logo_url}
             alt=""
-            className="h-6 w-auto max-w-[100px] object-contain shrink-0"
+            className="h-5 w-auto max-w-[80px] object-contain shrink-0"
             style={{ filter: isRefused ? "grayscale(1)" : undefined }}
           />
         ) : (
-          <div className="w-6 h-6 rounded-full bg-[#1A3A52]/10 flex items-center justify-center shrink-0">
+          <div className="w-5 h-5 rounded-full bg-[#1A3A52]/10 flex items-center justify-center shrink-0">
             <span className="text-[8px] font-bold text-[#1A3A52]" style={mFont}>
               {caterer?.name?.[0] ?? "?"}
             </span>
           </div>
         )}
         <p
-          className="text-xs font-bold truncate"
+          className="text-xs font-bold truncate flex-1"
           style={{ ...mFont, color: isRefused ? "#6B7280" : "#000", textDecoration: isRefused ? "line-through" : undefined }}
         >
           {caterer?.name ?? "Traiteur"}
         </p>
+        <span className="text-sm font-bold text-black shrink-0" style={mFont}>
+          {Number(quote.total_amount_ht).toLocaleString("fr-FR")} €
+        </span>
+      </div>
+
+      {/* Ligne 2 : par personne / validité / statut — infos secondaires */}
+      <div className="flex items-center gap-2 text-[11px] text-[#6B7280]" style={mFont}>
+        {quote.amount_per_person != null && (
+          <span>{Number(quote.amount_per_person).toLocaleString("fr-FR")} € / pers.</span>
+        )}
+        {quote.amount_per_person != null && quote.valid_until && <span>·</span>}
+        {quote.valid_until && (
+          <span>jusqu&apos;au {new Date(quote.valid_until).toLocaleDateString("fr-FR")}</span>
+        )}
         {isAccepted && (
-          <span className="ml-auto text-[10px] font-bold text-[#16A34A]" style={mFont}>Accepté</span>
+          <span className="ml-auto text-[10px] font-bold text-[#16A34A]">Accepté</span>
         )}
         {isRefused && (
-          <span className="ml-auto text-[10px] font-bold text-[#DC2626]" style={mFont}>Refusé</span>
+          <span className="ml-auto text-[10px] font-bold text-[#DC2626]">Refusé</span>
         )}
       </div>
 
-      {/* Montants */}
-      <div className="flex flex-col gap-1.5">
-        <div className="flex justify-between">
-          <span className="text-xs text-[#6B7280]" style={mFont}>Montant HT</span>
-          <span className="text-sm font-bold text-black" style={mFont}>
-            {Number(quote.total_amount_ht).toLocaleString("fr-FR")} €
-          </span>
-        </div>
-        {quote.amount_per_person != null && (
-          <div className="flex justify-between">
-            <span className="text-xs text-[#6B7280]" style={mFont}>Par personne</span>
-            <span className="text-xs font-bold text-black" style={mFont}>
-              {Number(quote.amount_per_person).toLocaleString("fr-FR")} €
-            </span>
-          </div>
-        )}
-        {quote.valorisable_agefiph != null && (
-          <div className="flex justify-between">
-            <span className="text-xs text-[#6B7280]" style={mFont}>Val. AGEFIPH</span>
-            <span className="text-xs font-bold text-black" style={mFont}>
-              {Number(quote.valorisable_agefiph).toLocaleString("fr-FR")} €
-            </span>
-          </div>
-        )}
-        {quote.valid_until && (
-          <div className="flex justify-between">
-            <span className="text-xs text-[#6B7280]" style={mFont}>Valide jusqu&apos;au</span>
-            <span className="text-xs text-[#6B7280]" style={mFont}>
-              {new Date(quote.valid_until).toLocaleDateString("fr-FR")}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Motif du refus (si saisi) */}
+      {/* Motif du refus (si saisi) — compact */}
       {isRefused && quote.refusal_reason && (
-        <div className="text-xs italic text-[#6B7280] rounded-md px-3 py-2" style={{ ...mFont, backgroundColor: "#fff" }}>
+        <div className="text-[11px] italic text-[#6B7280] rounded-md px-2 py-1.5" style={{ ...mFont, backgroundColor: "#fff" }}>
           &ldquo;{quote.refusal_reason}&rdquo;
         </div>
       )}
@@ -817,12 +796,9 @@ function QuoteCard({
         <QuoteViewerButton caterer={catererInfo} data={previewData} />
       )}
 
-      {/* Actions : accepter / refuser / contacter */}
+      {/* Actions : accepter / refuser */}
       {canAccept && (
-        <>
-          <div className="border-t border-[#E5E7EB]" />
-
-          {/* Accepter */}
+        <div className="flex flex-col gap-1.5 pt-1">
           <form action={acceptQuoteAction}>
             <input type="hidden" name="quote_id"       value={quote.id} />
             <input type="hidden" name="request_id"     value={requestId} />
@@ -830,21 +806,19 @@ function QuoteCard({
             <input type="hidden" name="event_address"  value={eventAddress} />
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold text-white transition-opacity hover:opacity-90"
               style={{ backgroundColor: "#16A34A", ...mFont }}
             >
-              <CheckCircle size={13} />
+              <CheckCircle size={12} />
               Accepter ce devis
             </button>
           </form>
-
-          {/* Refuser */}
           <RefuseQuoteButton
             action={refuseQuoteAction}
             quoteId={quote.id}
             requestId={requestId}
           />
-        </>
+        </div>
       )}
     </div>
   );

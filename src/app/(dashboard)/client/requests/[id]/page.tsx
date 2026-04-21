@@ -361,56 +361,10 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
               )}
             </div>
 
-            {/* ── Right : traiteur + statut + devis ── */}
+            {/* ── Right : statut demande + devis + traiteur ── */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* 1 — Traiteur contacté (demande directe) — carte complète */}
-              {!request.is_compare_mode && linkedCaterers.length === 1 && (
-                <ContactCard
-                  entityType="caterer"
-                  entityName={linkedCaterers[0].name}
-                  entityLogoUrl={linkedCaterers[0].logo_url}
-                  contactUserId={catererUser?.id ?? null}
-                  contactFirstName={catererUser?.first_name ?? null}
-                  contactLastName={catererUser?.last_name ?? null}
-                  contactEmail={catererUser?.email ?? null}
-                  publicProfileHref={`/client/caterers/${linkedCaterers[0].id}`}
-                  myUserId={user!.id}
-                  quoteRequestId={id}
-                  messagesHref="/client/messages"
-                />
-              )}
-
-              {/* Fallback : plusieurs traiteurs liés (cas rare hors compare mode) */}
-              {!request.is_compare_mode && linkedCaterers.length > 1 && (
-                <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
-                  <p className="font-display font-bold text-lg text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Traiteurs contactés
-                  </p>
-                  {linkedCaterers.map((cat) => (
-                    <Link
-                      key={cat.id}
-                      href={`/client/caterers/${cat.id}`}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-[#F3F4F6] hover:border-[#1A3A52]/30 hover:bg-[#F5F1E8] transition-all"
-                    >
-                      {cat.logo_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={cat.logo_url} alt="" className="h-8 w-auto max-w-[120px] object-contain shrink-0" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
-                          {cat.name[0]}
-                        </div>
-                      )}
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-bold text-black truncate" style={mFont}>{cat.name}</span>
-                        {cat.city && <span className="text-xs text-[#6B7280]" style={mFont}>{cat.city}</span>}
-                      </div>
-                      <ChevronLeft size={14} className="text-[#9CA3AF] ml-auto shrink-0 rotate-180" />
-                    </Link>
-                  ))}
-                </div>
-              )}
-
+              {/* 1 — Infos + actions sur la demande (l'objet) */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
 
 
@@ -529,6 +483,53 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                 </div>
               )}
               </div>
+
+              {/* 2 — Traiteur contacté (demande directe) — carte complète, sous la demande */}
+              {!request.is_compare_mode && linkedCaterers.length === 1 && (
+                <ContactCard
+                  entityType="caterer"
+                  entityName={linkedCaterers[0].name}
+                  entityLogoUrl={linkedCaterers[0].logo_url}
+                  contactUserId={catererUser?.id ?? null}
+                  contactFirstName={catererUser?.first_name ?? null}
+                  contactLastName={catererUser?.last_name ?? null}
+                  contactEmail={catererUser?.email ?? null}
+                  publicProfileHref={`/client/caterers/${linkedCaterers[0].id}`}
+                  myUserId={user!.id}
+                  quoteRequestId={id}
+                  messagesHref="/client/messages"
+                />
+              )}
+
+              {/* Fallback : plusieurs traiteurs liés (cas rare hors compare mode) */}
+              {!request.is_compare_mode && linkedCaterers.length > 1 && (
+                <div className="bg-white rounded-lg p-5 flex flex-col gap-3">
+                  <p className="font-display font-bold text-lg text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                    Traiteurs contactés
+                  </p>
+                  {linkedCaterers.map((cat) => (
+                    <Link
+                      key={cat.id}
+                      href={`/client/caterers/${cat.id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-[#F3F4F6] hover:border-[#1A3A52]/30 hover:bg-[#F5F1E8] transition-all"
+                    >
+                      {cat.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={cat.logo_url} alt="" className="h-8 w-auto max-w-[120px] object-contain shrink-0" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold" style={{ backgroundColor: "#1A3A52" }}>
+                          {cat.name[0]}
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-bold text-black truncate" style={mFont}>{cat.name}</span>
+                        {cat.city && <span className="text-xs text-[#6B7280]" style={mFont}>{cat.city}</span>}
+                      </div>
+                      <ChevronLeft size={14} className="text-[#9CA3AF] ml-auto shrink-0 rotate-180" />
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

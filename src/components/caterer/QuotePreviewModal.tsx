@@ -2,6 +2,14 @@
 
 import React from "react";
 import { X, Download, Send } from "lucide-react";
+import {
+  PLATFORM_FEE_LABEL,
+  PLATFORM_FEE_RATE_DISPLAY,
+  PLATFORM_FEE_TVA_RATE,
+  computePlatformFeeHt,
+  computePlatformFeeTva,
+  computePlatformFeeTtc,
+} from "@/lib/stripe/constants";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -24,6 +32,14 @@ type LineItemData = {
   section: "main" | "drinks" | "extra";
 };
 
+export type ClientInfo = {
+  companyName: string | null;
+  contactName: string | null;
+  email: string | null;
+  siret: string | null;
+  address: string | null;
+};
+
 export type PreviewData = {
   reference: string;
   validUntil: string;
@@ -37,6 +53,7 @@ export type PreviewData = {
   eventDate: string;
   eventAddress: string;
   mealTypeLabel: string;
+  client?: ClientInfo | null;
 };
 
 interface QuotePreviewModalProps {
@@ -126,11 +143,6 @@ function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
     )
     .join("");
 
-  const perPerson =
-    data.guestCount > 0 && data.totalTTC > 0
-      ? `<p style="text-align:right;font-size:11px;color:#999;margin:4px 0 0;">soit ${fmt(data.totalTTC / data.guestCount)} / personne</p>`
-      : "";
-
   const notesBlock = data.notes
     ? `
     <div style="margin-top:32px;padding:16px;border:1px solid #eee;border-radius:6px;">
@@ -179,10 +191,13 @@ function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
       <p style="font-size:12px;"><strong>Convives :</strong> ${data.guestCount} personnes</p>
     </div>
     <div style="padding:16px;background:#f8f8f8;border-radius:6px;">
-      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:8px;">Récapitulatif</p>
-      <p style="font-size:12px;margin-bottom:4px;"><strong>Total HT :</strong> ${fmt(data.totalHT)}</p>
-      <p style="font-size:12px;margin-bottom:4px;"><strong>Total TVA :</strong> ${fmt(data.totalTVA)}</p>
-      <p style="font-size:13px;font-weight:bold;color:#1A3A52;"><strong>Total TTC :</strong> ${fmt(data.totalTTC)}</p>
+      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:8px;">Client</p>
+      ${data.client?.companyName ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Entreprise :</strong> ${data.client.companyName}</p>` : ""}
+      ${data.client?.contactName ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Contact :</strong> ${data.client.contactName}</p>` : ""}
+      ${data.client?.email ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Email :</strong> ${data.client.email}</p>` : ""}
+      ${data.client?.address ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Adresse :</strong> ${data.client.address}</p>` : ""}
+      ${data.client?.siret ? `<p style="font-size:12px;"><strong>SIRET :</strong> ${data.client.siret}</p>` : ""}
+      ${!data.client?.companyName && !data.client?.contactName ? `<p style="font-size:11px;color:#999;font-style:italic;">—</p>` : ""}
     </div>
   </div>
 
@@ -199,22 +214,63 @@ function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
     </thead>
     <tbody>
       ${sectionRows}
-    </tbody>
-    <tfoot>
+
+      <!-- Totaux prestation (sans titre, directement à la suite des sections) -->
       <tr><td colspan="5" style="padding:8px 0;"></td></tr>
       <tr>
-        <td colspan="4" style="text-align:right;padding:4px 6px;font-size:12px;color:#666;border-top:1px solid #ddd;">Total HT</td>
-        <td style="text-align:right;padding:4px 6px;font-size:12px;color:#666;border-top:1px solid #ddd;">${fmt(data.totalHT)}</td>
+        <td colspan="4" style="text-align:right;padding:3px 6px;font-size:11px;color:#666;">Montant HT</td>
+        <td style="text-align:right;padding:3px 6px;font-size:11px;color:#000;">${fmt(data.totalHT)}</td>
       </tr>
       ${tvaRows}
-      <tr style="background:#f0f4f8;">
-        <td colspan="4" style="text-align:right;padding:10px 6px;font-size:14px;font-weight:bold;color:#1A3A52;">Total TTC</td>
-        <td style="text-align:right;padding:10px 6px;font-size:14px;font-weight:bold;color:#1A3A52;">${fmt(data.totalTTC)}</td>
+      <tr>
+        <td colspan="4" style="text-align:right;padding:3px 6px;font-size:11px;font-weight:bold;color:#000;">Sous-total TTC</td>
+        <td style="text-align:right;padding:3px 6px;font-size:11px;font-weight:bold;color:#000;">${fmt(data.totalTTC)}</td>
       </tr>
-    </tfoot>
+
+      <!-- Espace visuel avant la section frais -->
+      <tr><td colspan="5" style="padding:16px 0;"></td></tr>
+      <!-- Section Frais de mise en relation (même style qu'une section de prestation) -->
+      <tr>
+        <td colspan="5" style="padding:12px 6px 4px;background:#f5f5f5;">
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#555;">${PLATFORM_FEE_LABEL} (${Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés)</strong>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;vertical-align:top;">
+          <strong style="font-size:12px;">${PLATFORM_FEE_LABEL}</strong>
+        </td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">1</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;font-size:12px;">${fmt(computePlatformFeeHt(data.totalHT))}</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;font-size:12px;">${PLATFORM_FEE_TVA_RATE} %</td>
+        <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;font-size:12px;font-weight:bold;">${fmt(computePlatformFeeHt(data.totalHT))}</td>
+      </tr>
+
+      <!-- Totaux frais -->
+      <tr><td colspan="5" style="padding:8px 0;"></td></tr>
+      <tr>
+        <td colspan="4" style="text-align:right;padding:3px 6px;font-size:11px;color:#666;">Montant HT</td>
+        <td style="text-align:right;padding:3px 6px;font-size:11px;color:#000;">${fmt(computePlatformFeeHt(data.totalHT))}</td>
+      </tr>
+      <tr>
+        <td colspan="4" style="text-align:right;padding:3px 6px;font-size:11px;color:#666;">TVA ${PLATFORM_FEE_TVA_RATE} %</td>
+        <td style="text-align:right;padding:3px 6px;font-size:11px;color:#666;">${fmt(computePlatformFeeTva(data.totalHT))}</td>
+      </tr>
+      <tr>
+        <td colspan="4" style="text-align:right;padding:3px 6px;font-size:11px;font-weight:bold;color:#000;">Sous-total TTC</td>
+        <td style="text-align:right;padding:3px 6px;font-size:11px;font-weight:bold;color:#000;">${fmt(computePlatformFeeTtc(data.totalHT))}</td>
+      </tr>
+    </tbody>
   </table>
 
-  ${perPerson}
+  <!-- Total à payer : encadré sous le tableau -->
+  <div style="margin-top:24px;background:#F5F1E8;border-radius:8px;padding:16px 20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:14px;font-weight:bold;color:#000;">Total à payer</span>
+      <span style="font-size:20px;font-weight:bold;color:#1A3A52;">${fmt(data.totalTTC + computePlatformFeeTtc(data.totalHT))}</span>
+    </div>
+    ${data.guestCount > 0 && data.totalTTC > 0 ? `<p style="text-align:right;font-size:11px;color:#999;margin:4px 0 0;">soit ${fmt(data.totalTTC / data.guestCount)} / personne</p>` : ""}
+  </div>
+
   ${notesBlock}
 
   <!-- Pied de page -->
@@ -386,42 +442,42 @@ export default function QuotePreviewModal({
                   className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-2"
                   style={mFont}
                 >
-                  Montants
+                  Client
                 </p>
                 <div className="flex flex-col gap-1">
-                  <div className="flex justify-between">
-                    <p className="text-xs text-[#666]" style={mFont}>
-                      Total HT
-                    </p>
-                    <p className="text-xs font-bold" style={mFont}>
-                      {fmt(data.totalHT)}
-                    </p>
-                  </div>
-                  <div className="flex justify-between">
-                    <p className="text-xs text-[#666]" style={mFont}>
-                      Total TVA
-                    </p>
+                  {data.client?.companyName && (
                     <p className="text-xs" style={mFont}>
-                      {fmt(data.totalTVA)}
+                      <span className="font-bold">Entreprise : </span>
+                      {data.client.companyName}
                     </p>
-                  </div>
-                  <div
-                    className="flex justify-between pt-1 mt-1"
-                    style={{ borderTop: "1px solid #E5E7EB" }}
-                  >
-                    <p
-                      className="text-xs font-bold text-[#1A3A52]"
-                      style={mFont}
-                    >
-                      Total TTC
+                  )}
+                  {data.client?.contactName && (
+                    <p className="text-xs" style={mFont}>
+                      <span className="font-bold">Contact : </span>
+                      {data.client.contactName}
                     </p>
-                    <p
-                      className="text-xs font-bold text-[#1A3A52]"
-                      style={mFont}
-                    >
-                      {fmt(data.totalTTC)}
+                  )}
+                  {data.client?.email && (
+                    <p className="text-xs break-all" style={mFont}>
+                      <span className="font-bold">Email : </span>
+                      {data.client.email}
                     </p>
-                  </div>
+                  )}
+                  {data.client?.address && (
+                    <p className="text-xs" style={mFont}>
+                      <span className="font-bold">Adresse : </span>
+                      {data.client.address}
+                    </p>
+                  )}
+                  {data.client?.siret && (
+                    <p className="text-xs" style={mFont}>
+                      <span className="font-bold">SIRET : </span>
+                      {data.client.siret}
+                    </p>
+                  )}
+                  {!data.client?.companyName && !data.client?.contactName && (
+                    <p className="text-xs text-[#9CA3AF] italic" style={mFont}>—</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -525,23 +581,18 @@ export default function QuotePreviewModal({
                     </React.Fragment>
                   );
                 })}
-              </tbody>
-              <tfoot>
+
+                {/* Totaux prestation — directement à la suite des items,
+                    sans titre de section (les prestations ont déjà eu
+                    leurs en-têtes via sections main/drinks/extra). */}
                 <tr>
                   <td colSpan={5} className="py-2" />
                 </tr>
-                <tr style={{ borderTop: "1px solid #E5E7EB" }}>
-                  <td
-                    colSpan={4}
-                    className="px-3 py-2 text-right text-xs text-[#666]"
-                    style={mFont}
-                  >
-                    Total HT
+                <tr>
+                  <td colSpan={4} className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
+                    Montant HT
                   </td>
-                  <td
-                    className="px-3 py-2 text-right text-xs text-[#666]"
-                    style={mFont}
-                  >
+                  <td className="px-3 py-1 text-right text-xs text-black" style={mFont}>
                     {fmt(data.totalHT)}
                   </td>
                 </tr>
@@ -549,47 +600,115 @@ export default function QuotePreviewModal({
                   .sort(([a], [b]) => Number(a) - Number(b))
                   .map(([rate, amount]) => (
                     <tr key={rate}>
-                      <td
-                        colSpan={4}
-                        className="px-3 py-1 text-right text-xs text-[#9CA3AF]"
-                        style={mFont}
-                      >
+                      <td colSpan={4} className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
                         TVA {rate} %
                       </td>
-                      <td
-                        className="px-3 py-1 text-right text-xs text-[#9CA3AF]"
-                        style={mFont}
-                      >
+                      <td className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
                         {fmt(amount)}
                       </td>
                     </tr>
                   ))}
-                <tr style={{ backgroundColor: "#EEF2F6" }}>
-                  <td
-                    colSpan={4}
-                    className="px-3 py-3 text-right text-sm font-bold text-[#1A3A52]"
-                    style={mFont}
-                  >
-                    Total TTC
+                <tr>
+                  <td colSpan={4} className="px-3 py-1 text-right text-xs font-bold text-black" style={mFont}>
+                    Sous-total TTC
                   </td>
-                  <td
-                    className="px-3 py-3 text-right text-sm font-bold text-[#1A3A52]"
-                    style={mFont}
-                  >
+                  <td className="px-3 py-1 text-right text-xs font-bold text-black" style={mFont}>
                     {fmt(data.totalTTC)}
                   </td>
                 </tr>
-              </tfoot>
+
+                {/* Espace visuel avant la section frais */}
+                <tr>
+                  <td colSpan={5} className="py-4" />
+                </tr>
+                {/* Section "Frais de mise en relation" — mêmes codes
+                    visuels qu'une section de prestations (header gris +
+                    ligne item) pour que le client comprenne que c'est
+                    une ligne normale de facture. */}
+                <tr style={{ backgroundColor: "#F3F4F6" }}>
+                  <td
+                    colSpan={5}
+                    className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#6B7280]"
+                    style={mFont}
+                  >
+                    {PLATFORM_FEE_LABEL} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés)
+                  </td>
+                </tr>
+                <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
+                  <td className="px-3 py-2.5 align-top" style={mFont}>
+                    <p className="text-xs font-bold text-black">
+                      {PLATFORM_FEE_LABEL}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-center text-[#444]" style={mFont}>
+                    1
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-right text-[#444]" style={mFont}>
+                    {fmt(computePlatformFeeHt(data.totalHT))}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-center text-[#444]" style={mFont}>
+                    {PLATFORM_FEE_TVA_RATE} %
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-right font-bold text-black" style={mFont}>
+                    {fmt(computePlatformFeeHt(data.totalHT))}
+                  </td>
+                </tr>
+
+                {/* Totaux frais */}
+                <tr>
+                  <td colSpan={5} className="py-2" />
+                </tr>
+                <tr>
+                  <td colSpan={4} className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
+                    Montant HT
+                  </td>
+                  <td className="px-3 py-1 text-right text-xs text-black" style={mFont}>
+                    {fmt(computePlatformFeeHt(data.totalHT))}
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={4} className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
+                    TVA {PLATFORM_FEE_TVA_RATE} %
+                  </td>
+                  <td className="px-3 py-1 text-right text-xs text-[#6B7280]" style={mFont}>
+                    {fmt(computePlatformFeeTva(data.totalHT))}
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={4} className="px-3 py-1 text-right text-xs font-bold text-black" style={mFont}>
+                    Sous-total TTC
+                  </td>
+                  <td className="px-3 py-1 text-right text-xs font-bold text-black" style={mFont}>
+                    {fmt(computePlatformFeeTtc(data.totalHT))}
+                  </td>
+                </tr>
+              </tbody>
             </table>
 
-            {data.guestCount > 0 && data.totalTTC > 0 && (
-              <p
-                className="text-right text-[11px] text-[#9CA3AF] mt-2"
-                style={mFont}
-              >
-                soit {fmt(data.totalTTC / data.guestCount)} / personne
-              </p>
-            )}
+            {/* Total à payer — encadré séparé sous le tableau, pour
+                que le montant final soit visuellement indépendant des
+                lignes du devis. */}
+            <div
+              className="mt-6 rounded-lg p-4"
+              style={{ backgroundColor: "#F5F1E8" }}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-base font-bold text-black" style={mFont}>
+                  Total à payer
+                </p>
+                <p className="text-2xl font-bold text-[#1A3A52]" style={mFont}>
+                  {fmt(data.totalTTC + computePlatformFeeTtc(data.totalHT))}
+                </p>
+              </div>
+              {data.guestCount > 0 && data.totalTTC > 0 && (
+                <p
+                  className="text-right text-[11px] text-[#9CA3AF] mt-1"
+                  style={mFont}
+                >
+                  soit {fmt(data.totalTTC / data.guestCount)} / personne
+                </p>
+              )}
+            </div>
 
             {/* Notes */}
             {data.notes && (

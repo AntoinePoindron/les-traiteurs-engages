@@ -2,12 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Check } from "lucide-react";
+import { Plus, Trash2, Check, Info, Lock } from "lucide-react";
 import { saveQuote } from "@/app/(dashboard)/caterer/requests/[id]/quote/new/actions";
 import type { QuoteRequest } from "@/types/database";
 import QuotePreviewModal from "@/components/caterer/QuotePreviewModal";
-import type { CatererInfo } from "@/components/caterer/QuotePreviewModal";
+import type { CatererInfo, ClientInfo } from "@/components/caterer/QuotePreviewModal";
 import BackButton from "@/components/ui/BackButton";
+import { randomUUID } from "@/lib/uuid";
+import {
+  PLATFORM_FEE_LABEL,
+  PLATFORM_FEE_RATE_DISPLAY,
+  PLATFORM_FEE_TVA_RATE,
+  computePlatformFeeHt,
+  computePlatformFeeTva,
+  computePlatformFeeTtc,
+} from "@/lib/stripe/constants";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -50,7 +59,7 @@ const DIETARY_LABELS: { key: keyof QuoteRequest; label: string }[] = [
 
 function newItem(): LineItem {
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     label: "",
     description: "",
     quantity: 1,
@@ -107,12 +116,10 @@ function Card({
 
 function InfoCard({
   reference,
-  onRef,
   validUntil,
   onVU,
 }: {
   reference: string;
-  onRef: (v: string) => void;
   validUntil: string;
   onVU: (v: string) => void;
 }) {
@@ -123,13 +130,34 @@ function InfoCard({
           <label className="text-xs font-bold text-black" style={mFont}>
             Référence du devis
           </label>
-          <input
-            value={reference}
-            onChange={(e) => onRef(e.target.value)}
-            className={inputCls}
-            style={inputStyle}
-            placeholder="Ex : DEVIS-2026-001"
-          />
+          <div className="relative">
+            <input
+              value={reference}
+              readOnly
+              disabled
+              className={inputCls}
+              style={{
+                ...inputStyle,
+                backgroundColor: "#F3F4F6",
+                color: "#6B7280",
+                cursor: "not-allowed",
+                paddingRight: 32,
+              }}
+              aria-describedby="reference-locked-hint"
+            />
+            <Lock
+              size={13}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none"
+            />
+          </div>
+          <p
+            id="reference-locked-hint"
+            className="text-[11px] text-[#6B7280] leading-snug"
+            style={mFont}
+          >
+            La référence est générée automatiquement et ne peut pas être
+            modifiée.
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-bold text-black" style={mFont}>
@@ -356,61 +384,148 @@ function TotalCard({
   totalTVA,
   totalTTC,
   guestCount,
+  onDraft,
+  onSend,
+  isPending,
+  savedDraft,
+  canSend,
+  error,
 }: {
   totalHT: number;
   tvaMap: Record<number, number>;
   totalTVA: number;
   totalTTC: number;
   guestCount: number;
+  onDraft: () => void;
+  onSend: () => void;
+  isPending: boolean;
+  savedDraft: boolean;
+  canSend: boolean;
+  error: string | null;
 }) {
   const perPerson = guestCount > 0 && totalTTC > 0 ? totalTTC / guestCount : null;
 
   return (
-    <div className="bg-white rounded-lg p-6">
-      <div className="flex flex-col gap-2.5 ml-auto" style={{ maxWidth: 320 }}>
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-[#6B7280]" style={mFont}>
-            Total HT
+    <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+      <h2
+        className="font-display font-bold text-lg text-black"
+        style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+      >
+        Total du devis
+      </h2>
+
+      <div className="flex flex-col gap-3">
+        {/* Bloc prestation traiteur */}
+        <div className="flex flex-col gap-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]" style={mFont}>
+            Prestation traiteur
           </p>
-          <p className="text-sm font-bold text-black" style={mFont}>
-            {formatCurrency(totalHT)}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-[#6B7280]" style={mFont}>Total HT</p>
+            <p className="text-xs text-black" style={mFont}>{formatCurrency(totalHT)}</p>
+          </div>
+          {Object.entries(tvaMap)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([rate, amount]) => (
+              <div key={rate} className="flex items-center justify-between">
+                <p className="text-xs text-[#6B7280]" style={mFont}>TVA {rate} %</p>
+                <p className="text-xs text-[#6B7280]" style={mFont}>{formatCurrency(amount)}</p>
+              </div>
+            ))}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-black" style={mFont}>Sous-total TTC</p>
+            <p className="text-xs font-bold text-black" style={mFont}>{formatCurrency(totalTTC)}</p>
+          </div>
+          {perPerson && (
+            <p className="text-[10px] text-[#9CA3AF] text-right" style={mFont}>
+              soit {formatCurrency(perPerson)} / personne
+            </p>
+          )}
+        </div>
+
+        {/* Bloc frais de mise en relation */}
+        <div className="flex flex-col gap-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] flex items-center gap-1" style={mFont}>
+            {PLATFORM_FEE_LABEL} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés)
+            <span className="group relative inline-flex items-center">
+              <Info size={11} className="text-[#9CA3AF] cursor-help" />
+              <span
+                className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-2 rounded shadow-lg z-10 text-[11px] font-normal normal-case tracking-normal leading-snug"
+                style={{ backgroundColor: "#1A3A52", color: "#FFF", ...mFont }}
+                role="tooltip"
+              >
+                Ces frais sont ajoutés sur la facture du client et
+                reviennent à la plateforme. Ils ne sont pas prélevés sur
+                votre prestation : vous touchez l&apos;intégralité du
+                montant TTC de la partie prestation traiteur.
+                <span
+                  className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0"
+                  style={{
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderTop: "5px solid #1A3A52",
+                  }}
+                />
+              </span>
+            </span>
+          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-[#6B7280]" style={mFont}>Montant HT</p>
+            <p className="text-xs text-black" style={mFont}>{formatCurrency(computePlatformFeeHt(totalHT))}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-[#6B7280]" style={mFont}>TVA {PLATFORM_FEE_TVA_RATE} %</p>
+            <p className="text-xs text-[#6B7280]" style={mFont}>{formatCurrency(computePlatformFeeTva(totalHT))}</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-black" style={mFont}>Sous-total TTC</p>
+            <p className="text-xs font-bold text-black" style={mFont}>{formatCurrency(computePlatformFeeTtc(totalHT))}</p>
+          </div>
+        </div>
+
+        {/* Total à payer (plus de liseré navy — le montant se détache
+            naturellement par sa taille et sa couleur) */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold text-black" style={mFont}>Total à payer</p>
+          <p className="text-xl font-bold" style={{ color: "#1A3A52", ...mFont }}>
+            {formatCurrency(totalTTC + computePlatformFeeTtc(totalHT))}
           </p>
         </div>
-        {Object.entries(tvaMap)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([rate, amount]) => (
-            <div key={rate} className="flex items-center justify-between">
-              <p className="text-sm text-[#6B7280]" style={mFont}>
-                TVA {rate} %
-              </p>
-              <p className="text-sm text-[#6B7280]" style={mFont}>
-                {formatCurrency(amount)}
-              </p>
-            </div>
-          ))}
-        <div className="h-px bg-[#E5E7EB] my-1" />
-        <div className="flex items-center justify-between">
-          <p className="text-base font-bold text-black" style={mFont}>
-            Total TTC
-          </p>
-          <p
-            className="font-display font-bold text-3xl"
-            style={{
-              color: "#1A3A52",
-              fontVariationSettings: "'SOFT' 0, 'WONK' 1",
-            }}
-          >
-            {formatCurrency(totalTTC)}
-          </p>
-        </div>
-        {perPerson && (
-          <p
-            className="text-xs text-[#9CA3AF] text-right"
-            style={mFont}
-          >
-            soit {formatCurrency(perPerson)} / personne
-          </p>
-        )}
+      </div>
+
+      {/* Actions : remplace l'ancienne barre sticky du bas. En cas
+          d'erreur, on l'affiche juste au dessus pour rester proche
+          du bouton qui l'a déclenchée. */}
+      {error && (
+        <p className="text-xs text-[#DC2626]" style={mFont}>
+          {error}
+        </p>
+      )}
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={isPending || !canSend}
+          className="w-full px-4 py-2.5 rounded-full text-xs font-bold text-white disabled:opacity-50 hover:opacity-90 transition-opacity"
+          style={{ ...mFont, backgroundColor: "#1A3A52" }}
+        >
+          Enregistrer et envoyer
+        </button>
+        <button
+          type="button"
+          onClick={onDraft}
+          disabled={isPending}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold border border-[#1A3A52] text-[#1A3A52] hover:bg-[#F0F4F7] transition-colors disabled:opacity-50"
+          style={mFont}
+        >
+          {savedDraft ? (
+            <>
+              <Check size={13} /> Brouillon enregistré
+            </>
+          ) : (
+            "Enregistrer en brouillon"
+          )}
+        </button>
       </div>
     </div>
   );
@@ -559,7 +674,7 @@ function initSectionsFromDetails(details: any[]): Sections {
     const section: SectionKey =
       d.section === "drinks" ? "drinks" : d.section === "extra" ? "extra" : "main";
     sections[section].push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       label: d.label ?? "",
       description: d.description ?? "",
       quantity: d.quantity ?? 1,
@@ -587,6 +702,7 @@ interface QuoteEditorProps {
   defaultReference: string;
   draftQuote?: DraftQuote;
   catererInfo: CatererInfo;
+  clientInfo?: ClientInfo | null;
 }
 
 export default function QuoteEditor({
@@ -595,6 +711,7 @@ export default function QuoteEditor({
   defaultReference,
   draftQuote,
   catererInfo,
+  clientInfo = null,
 }: QuoteEditorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -602,7 +719,17 @@ export default function QuoteEditor({
   const [error, setError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
-  const [reference, setReference] = useState(draftQuote?.reference ?? defaultReference);
+  // La référence est gelée (générée par le système, ne peut pas être
+  // modifiée — elle sert de numéro de facture Stripe, unicité imposée).
+  const [reference] = useState(draftQuote?.reference ?? defaultReference);
+  // Track du quote id courant — initialisé à l'id du draft si on entre
+  // en edit mode, mis à jour quand on sauve un nouveau devis en
+  // brouillon pour que les saves suivants deviennent des UPDATE (sans
+  // ça on retomberait sur un INSERT à chaque clic, bloqué par la
+  // contrainte d'unicité sur la référence).
+  const [currentQuoteId, setCurrentQuoteId] = useState<string | null>(
+    draftQuote?.id ?? null
+  );
   const [validUntil, setValidUntil] = useState(draftQuote?.valid_until ?? "");
   const [notes, setNotes] = useState(draftQuote?.notes ?? "");
   const [sections, setSections] = useState<Sections>(() =>
@@ -659,7 +786,7 @@ export default function QuoteEditor({
   function buildPayload() {
     return {
       quote_request_id: requestId,
-      ...(draftQuote ? { quote_id: draftQuote.id } : {}),
+      ...(currentQuoteId ? { quote_id: currentQuoteId } : {}),
       reference,
       valid_until: validUntil || null,
       notes,
@@ -679,6 +806,7 @@ export default function QuoteEditor({
       if (result.error) {
         setError(result.error);
       } else {
+        if (result.id) setCurrentQuoteId(result.id);
         setSavedDraft(true);
         setTimeout(() => setSavedDraft(false), 3000);
       }
@@ -720,6 +848,7 @@ export default function QuoteEditor({
     eventDate: request.event_date,
     eventAddress: request.event_address,
     mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type,
+    client: clientInfo,
   };
 
   return (
@@ -758,7 +887,6 @@ export default function QuoteEditor({
             <div className="flex-1 flex flex-col gap-6 min-w-0">
               <InfoCard
                 reference={reference}
-                onRef={setReference}
                 validUntil={validUntil}
                 onVU={setValidUntil}
               />
@@ -784,71 +912,29 @@ export default function QuoteEditor({
                 onRemove={(id) => removeItem("extra", id)}
               />
               <NotesCard notes={notes} onChange={setNotes} />
+            </div>
+
+            {/* Sidebar : total (sticky, en haut) + récapitulatif demande */}
+            <div
+              className="shrink-0 self-start sticky flex flex-col gap-4"
+              style={{ width: 300, top: 72 }}
+            >
               <TotalCard
                 totalHT={totalHT}
                 tvaMap={tvaMap}
                 totalTVA={totalTVA}
                 totalTTC={totalTTC}
                 guestCount={request.guest_count}
+                onDraft={handleDraft}
+                onSend={handleSend}
+                isPending={isPending}
+                savedDraft={savedDraft}
+                canSend={allItems.length > 0}
+                error={error}
               />
-            </div>
-
-            {/* Sidebar récapitulatif */}
-            <div className="shrink-0 self-start sticky" style={{ width: 300, top: 72 }}>
               <SummaryCard request={request} />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Barre d'actions sticky */}
-      <div
-        className="sticky bottom-0 z-10 flex items-center justify-between px-8 py-4 border-t border-[#E5E7EB]"
-        style={{
-          backgroundColor: "rgba(255,255,255,0.97)",
-          backdropFilter: "blur(4px)",
-        }}
-      >
-        <div>
-          {error && (
-            <p className="text-sm text-[#DC2626]" style={mFont}>
-              {error}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-5 py-3 rounded-full text-sm font-bold text-[#6B7280] hover:text-black transition-colors"
-            style={mFont}
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={handleDraft}
-            disabled={isPending}
-            className="flex items-center gap-2 px-5 py-3 rounded-full text-sm font-bold border border-[#1A3A52] text-[#1A3A52] hover:bg-[#F0F4F7] transition-colors disabled:opacity-50"
-            style={mFont}
-          >
-            {savedDraft ? (
-              <>
-                <Check size={14} /> Brouillon enregistré
-              </>
-            ) : (
-              "Enregistrer en brouillon"
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={isPending || allItems.length === 0}
-            className="px-6 py-3 rounded-full text-sm font-bold text-white disabled:opacity-50 hover:opacity-90 transition-opacity"
-            style={{ ...mFont, backgroundColor: "#1A3A52" }}
-          >
-            Enregistrer et envoyer
-          </button>
         </div>
       </div>
       </main>

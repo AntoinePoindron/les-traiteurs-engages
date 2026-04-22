@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SignupResult } from "./types";
+import type { CatererStructureType } from "@/types/database";
 
 // ── Inscription traiteur ─────────────────────────────────────────
 // Le traiteur crée son compte + sa structure. Le compte est
@@ -12,14 +13,17 @@ import type { SignupResult } from "./types";
 // `is_validated = true`).
 
 async function signupCaterer(
-  email:       string,
-  password:    string,
-  firstName:   string,
-  lastName:    string,
-  siret:       string,
-  catererName: string,
-  esatStatus:  boolean,
+  email:         string,
+  password:      string,
+  firstName:     string,
+  lastName:      string,
+  siret:         string,
+  catererName:   string,
+  structureType: CatererStructureType,
 ): Promise<SignupResult> {
+  // esat_status conservé pour la rétrocompat (calculs AGEFIPH) — seul
+  // ESAT donne droit à la valorisation AGEFIPH côté client.
+  const esatStatus = structureType === "ESAT";
   const admin = createAdminClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,10 +74,11 @@ async function signupCaterer(
   const { data: createdCaterer, error: createErr } = await (admin as any)
     .from("caterers")
     .insert({
-      name:         catererName,
+      name:           catererName,
       siret,
-      esat_status:  esatStatus,
-      is_validated: false,
+      esat_status:    esatStatus,
+      structure_type: structureType,
+      is_validated:   false,
     })
     .select("id, name")
     .single();
@@ -167,7 +172,20 @@ export async function signupAction(formData: FormData): Promise<SignupResult> {
   const siretRaw  = ((formData.get("siret")    as string | null) ?? "").trim();
   const companyName = ((formData.get("company_name") as string | null) ?? "").trim();
   const catererName = ((formData.get("caterer_name") as string | null) ?? "").trim();
-  const esatStatus  = formData.get("esat_status") === "esat";
+  // Type de structure : 4 valeurs autorisées (minuscules côté form,
+  // uppercase côté enum DB). Fallback sécurisé sur ESAT si l'input
+  // arrive vide ou inconnu.
+  const rawType = ((formData.get("structure_type") as string | null) ?? "esat").toLowerCase();
+  const structureType: CatererStructureType = (() => {
+    switch (rawType) {
+      case "ea":  return "EA";
+      case "ei":  return "EI";
+      case "aci": return "ACI";
+      case "esat":
+      default:
+        return "ESAT";
+    }
+  })();
 
   if (!email || !password) {
     return { ok: false, error: "Email et mot de passe sont requis." };
@@ -188,7 +206,7 @@ export async function signupAction(formData: FormData): Promise<SignupResult> {
     if (!catererName) {
       return { ok: false, error: "Le nom de la structure est requis." };
     }
-    return signupCaterer(email, password, firstName, lastName, siret, catererName, esatStatus);
+    return signupCaterer(email, password, firstName, lastName, siret, catererName, structureType);
   }
 
   const admin = createAdminClient();

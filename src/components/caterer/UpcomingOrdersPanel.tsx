@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ShoppingBag, Calendar, MapPin, ChevronRight } from "lucide-react";
+import { ShoppingBag, Calendar, MapPin, ChevronRight, Building2 } from "lucide-react";
+import StatusBadge from "@/components/ui/StatusBadge";
 import type { Order } from "@/types/database";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -80,28 +81,30 @@ export default function UpcomingOrdersPanel({ orders }: UpcomingOrdersPanelProps
                 </div>
 
                 {/* Contenu */}
-                <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex items-baseline gap-1.5 min-w-0">
-                      <p className="text-sm font-bold text-black truncate" style={mFont}>
-                        {mealLabel}
-                      </p>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="flex flex-col gap-1 min-w-0 flex-1">
+                    <p className="text-sm font-bold text-black truncate" style={mFont}>
+                      {mealLabel}
+                    </p>
+                    <div className="flex flex-col gap-0.5 min-w-0">
                       {order.company_name && order.company_name !== "—" && (
-                        <p className="text-xs text-[#9CA3AF] truncate shrink-0" style={mFont}>
-                          {order.company_name}
-                        </p>
+                        <span className="flex items-center gap-0.5 text-xs text-[#6B7280] min-w-0" style={mFont}>
+                          <Building2 size={10} className="shrink-0" />
+                          <span className="truncate">{order.company_name}</span>
+                        </span>
                       )}
-                    </div>
-                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
                       <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
                         <Calendar size={10} className="shrink-0" />
                         {date}
                       </span>
-                      <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                      <span className="flex items-center gap-0.5 text-xs text-[#6B7280] min-w-0" style={mFont}>
                         <MapPin size={10} className="shrink-0" />
-                        {shortAddress}
+                        <span className="truncate">{shortAddress}</span>
                       </span>
                     </div>
+                  </div>
+                  <div className="shrink-0">
+                    <StatusBadge variant="confirmed" />
                   </div>
                   <ChevronRight size={14} className="text-[#D1D5DB] group-hover:text-[#9CA3AF] transition-colors shrink-0" />
                 </div>

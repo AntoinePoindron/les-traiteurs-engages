@@ -32,9 +32,13 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Routes publiques (auth)
+  // Routes publiques (auth + landing)
+  // La racine "/" sert la landing page marketing (accessible hors auth).
+  // Les autres routes sans préfixe protégé restent publiques sans effet
+  // — le dashboard est sous (dashboard)/caterer|client|admin.
   const publicRoutes = ["/login", "/signup", "/reset-password"];
-  const isPublicRoute = publicRoutes.some((r) => pathname.startsWith(r));
+  const isLanding = pathname === "/";
+  const isPublicRoute = isLanding || publicRoutes.some((r) => pathname.startsWith(r));
 
   // Helper : propage les cookies refresh de Supabase SSR sur un
   // redirect. Sans ça, si getUser() a rafraîchi les tokens, les
@@ -91,6 +95,10 @@ function getDashboardPath(role: string): string {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Exclut explicitement /api/webhooks/* : les webhooks Stripe (et
+    // autres) authentifient via signature HMAC, pas via cookie. Sans
+    // exclusion, le middleware les redirige vers /login en 307 et
+    // Stripe CLI ne suit pas les redirects POST → webhook jamais reçu.
+    "/((?!_next/static|_next/image|favicon.ico|fonts|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

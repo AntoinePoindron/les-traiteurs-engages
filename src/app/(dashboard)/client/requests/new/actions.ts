@@ -95,8 +95,9 @@ export async function submitQuoteRequest(
       drinks_hot:               data.drinksHot,
       drinks_details:           null,
       // Services
-      service_waitstaff:        data.serviceWaitstaff,
-      service_equipment:        data.serviceEquipment,
+      service_waitstaff:         data.serviceWaitstaff,
+      service_waitstaff_details: data.serviceWaitstaffDetails || null,
+      service_equipment:         data.serviceEquipment,
       service_equipment_verres: data.serviceEquipmentVerres,
       service_equipment_nappes: data.serviceEquipmentNappes,
       service_equipment_tables: data.serviceEquipmentTables,

@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Info } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { submitQuoteRequest } from "@/app/(dashboard)/client/requests/new/actions";
 import { updateQuoteRequest } from "@/app/(dashboard)/client/requests/[id]/edit/actions";
+import {
+  PLATFORM_FEE_LABEL,
+  PLATFORM_FEE_RATE_DISPLAY,
+} from "@/lib/stripe/constants";
 import type { ServiceTypeConfig } from "@/types/database";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -41,6 +46,7 @@ export type WizardData = {
   drinksHot: boolean;
   // Step 5
   serviceWaitstaff: boolean;
+  serviceWaitstaffDetails: string;
   serviceEquipment: boolean;
   serviceEquipmentVerres: boolean;
   serviceEquipmentNappes: boolean;
@@ -64,7 +70,7 @@ const INITIAL: WizardData = {
   eventDate: "", eventStartTime: "", eventEndTime: "", eventAddress: "", guestCount: "", eventDescription: "", companyServiceId: "",
   dietVegetarian: false, dietVegetarianCount: "", dietHalal: false, dietGlutenFree: false, dietGlutenFreeCount: "", dietBio: false, dietOther: "",
   drinksWaterStill: false, drinksWaterSparkling: false, drinksSoft: false, drinksSoftDetails: "", drinksAlcohol: false, drinksAlcoholDetails: "", drinksHot: false,
-  serviceWaitstaff: false, serviceEquipment: false, serviceEquipmentVerres: false, serviceEquipmentNappes: false, serviceEquipmentTables: false, serviceEquipmentOther: "", serviceSetup: false, serviceSetupTime: "", serviceSetupOther: "",
+  serviceWaitstaff: false, serviceWaitstaffDetails: "", serviceEquipment: false, serviceEquipmentVerres: false, serviceEquipmentNappes: false, serviceEquipmentTables: false, serviceEquipmentOther: "", serviceSetup: false, serviceSetupTime: "", serviceSetupOther: "",
   budgetGlobal: "", budgetPerPerson: "", budgetFlexibility: "10",
   messageToCaterer: "",
 };
@@ -217,7 +223,10 @@ function CheckRow({
 }) {
   return (
     <div className="flex flex-col border-b border-[#F3F4F6] last:border-0">
-      <div className="flex items-center justify-between py-4">
+      {/* min-h fixe pour que la hauteur ne bouge pas quand un input
+          apparaît après coche (les contrôles enfants sont plus hauts
+          qu'un simple label). */}
+      <div className="flex items-center justify-between py-2 min-h-[68px]">
         <label className="flex items-center gap-3 cursor-pointer select-none flex-1" style={mFont}>
           <span
             className="w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors"
@@ -460,13 +469,13 @@ function Step3({ data, update }: { data: WizardData; update: <K extends keyof Wi
         <CheckRow label="Options végétariennes" checked={data.dietVegetarian} onChange={v => { update("dietVegetarian", v); if (!v) update("dietVegetarianCount", ""); }}>
           {data.dietVegetarian && (
             <div className="flex items-center gap-2 ml-4">
-              <span className="text-xs text-[#6B7280]" style={mFont}>nbr de pers</span>
+              <span className="text-xs text-[#6B7280]" style={mFont}>quantité</span>
               <Input
                 type="number" min="1"
                 value={data.dietVegetarianCount}
                 onChange={e => update("dietVegetarianCount", e.target.value)}
-                placeholder="Ex: 5"
-                className="w-20"
+                placeholder="5"
+                className="w-14"
                 onClick={e => e.stopPropagation()}
               />
             </div>
@@ -475,13 +484,13 @@ function Step3({ data, update }: { data: WizardData; update: <K extends keyof Wi
         <CheckRow label="Sans gluten" checked={data.dietGlutenFree} onChange={v => { update("dietGlutenFree", v); if (!v) update("dietGlutenFreeCount", ""); }}>
           {data.dietGlutenFree && (
             <div className="flex items-center gap-2 ml-4">
-              <span className="text-xs text-[#6B7280]" style={mFont}>nbr de pers</span>
+              <span className="text-xs text-[#6B7280]" style={mFont}>quantité</span>
               <Input
                 type="number" min="1"
                 value={data.dietGlutenFreeCount}
                 onChange={e => update("dietGlutenFreeCount", e.target.value)}
-                placeholder="Ex: 5"
-                className="w-20"
+                placeholder="5"
+                className="w-14"
                 onClick={e => e.stopPropagation()}
               />
             </div>
@@ -549,12 +558,30 @@ function Step5({ data, update }: { data: WizardData; update: <K extends keyof Wi
   return (
     <Card title="Services additionnels">
       <div className="flex flex-col">
-        <CheckRow label="Personnel" checked={data.serviceWaitstaff} onChange={v => update("serviceWaitstaff", v)} />
+        <CheckRow
+          label="Personnel"
+          checked={data.serviceWaitstaff}
+          onChange={v => {
+            update("serviceWaitstaff", v);
+            if (!v) update("serviceWaitstaffDetails", "");
+          }}
+        />
+        {data.serviceWaitstaff && (
+          <div className="pl-8 pt-3 pb-4">
+            <Label>Détaillez votre besoin</Label>
+            <Textarea
+              rows={3}
+              value={data.serviceWaitstaffDetails}
+              onChange={e => update("serviceWaitstaffDetails", e.target.value)}
+              placeholder="Accueil à l'entrée, service barman..."
+            />
+          </div>
+        )}
 
         <CheckRow label="Matériel (vaisselle, nappes, etc.)" checked={data.serviceEquipment} onChange={v => { update("serviceEquipment", v); if (!v) { update("serviceEquipmentVerres", false); update("serviceEquipmentNappes", false); update("serviceEquipmentTables", false); update("serviceEquipmentOther", ""); } }}>
         </CheckRow>
         {data.serviceEquipment && (
-          <div className="pl-8 pb-4 flex flex-col gap-3">
+          <div className="pl-8 pt-3 pb-4 flex flex-col gap-3">
             {[
               { key: "serviceEquipmentVerres" as const, label: "Verres" },
               { key: "serviceEquipmentNappes" as const, label: "Nappes et serviettes" },
@@ -590,7 +617,7 @@ function Step5({ data, update }: { data: WizardData; update: <K extends keyof Wi
         <CheckRow label="Installation et mise en place" checked={data.serviceSetup} onChange={v => { update("serviceSetup", v); if (!v) { update("serviceSetupTime", ""); update("serviceSetupOther", ""); } }}>
         </CheckRow>
         {data.serviceSetup && (
-          <div className="pl-8 pb-4 flex flex-col gap-3">
+          <div className="pl-8 pt-3 pb-4 flex flex-col gap-3">
             <div>
               <Label>Heure de mise en place</Label>
               <Input type="time" value={data.serviceSetupTime} onChange={e => update("serviceSetupTime", e.target.value)} placeholder="hh:mm" className="max-w-[180px]" />
@@ -683,6 +710,28 @@ function Step6({ data, update }: { data: WizardData; update: <K extends keyof Wi
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Encart frais de mise en relation — rappelle au client
+                que le budget saisi est la prestation traiteur, auquel
+                5% TTC seront ajoutés sur la facture finale. */}
+            <div
+              className="flex items-start gap-2 rounded-lg p-3"
+              style={{ backgroundColor: "#F5F1E8", ...mFont }}
+            >
+              <Info size={14} style={{ color: "#1A3A52" }} className="shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-0.5">
+                <p className="text-xs font-bold text-black">
+                  {PLATFORM_FEE_LABEL} : {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés au devis
+                </p>
+                <p className="text-xs text-[#6B7280]">
+                  Les prix affichés par les traiteurs correspondent à leur
+                  prestation. Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
+                  HT (TVA 20%) pour la mise en relation avec des ESAT et EA
+                  qualifiés et la sécurisation de votre paiement. Le total
+                  figurera sur la facture.
+                </p>
+              </div>
             </div>
           </div>
         </Card>
@@ -797,6 +846,27 @@ function Step7({ data, update, catererData, isCompareMode }: {
             {data.budgetPerPerson && <RecapRow label="Budget par personne" value={`${data.budgetPerPerson} €`} />}
           </RecapSection>
         )}
+
+        {/* Rappel sur les frais de mise en relation — ajoutés sur la
+            facture finale, en sus du devis traiteur. */}
+        <div
+          className="flex items-start gap-2 rounded-lg p-3 mt-2"
+          style={{ backgroundColor: "#F5F1E8", ...mFont }}
+        >
+          <Info size={14} style={{ color: "#1A3A52" }} className="shrink-0 mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <p className="text-xs font-bold text-black">
+              {PLATFORM_FEE_LABEL} : {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés au devis
+            </p>
+            <p className="text-xs text-[#6B7280]">
+              Les prix affichés par les traiteurs correspondent à leur
+              prestation. Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
+              HT (TVA 20%) pour la mise en relation avec des ESAT et EA
+              qualifiés et la sécurisation de votre paiement. Le total
+              figurera sur la facture.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="mt-6">

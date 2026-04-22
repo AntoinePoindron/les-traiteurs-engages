@@ -21,8 +21,11 @@ export const dynamic = "force-dynamic";
  *  - URL publique : https://<votre-domaine>/api/webhooks/stripe
  *  - Events à écouter (V2 et V1 mélangés) :
  *      • v2.core.account[configuration.recipient].capability_status_updated
- *      • checkout.session.completed  (phase 3)
- *      • payment_intent.payment_failed  (phase 3)
+ *      • checkout.session.completed        (ancien flow, conservé)
+ *      • payment_intent.payment_failed     (ancien flow, conservé)
+ *      • invoice.finalized                 (nouvelle facture émise)
+ *      • invoice.paid                      (facture payée par le client)
+ *      • invoice.payment_failed            (carte refusée / virement rejeté)
  *  - Copier le signing secret (whsec_…) dans STRIPE_WEBHOOK_SECRET.
  *
  * En local, utiliser la CLI Stripe :
@@ -190,6 +193,154 @@ export async function POST(request: Request) {
       }
     }
 
+    return NextResponse.json({ received: true });
+  }
+
+  // ── V1 event : invoice.finalized ───────────────────────────────
+  // Facture finalisée côté Stripe (avant que le client ne paie). On
+  // s'en sert pour garder stripe_hosted_invoice_url à jour si Stripe
+  // a régénéré l'URL, et pour confirmer le statut "invoiced" côté BD.
+  if (event.type === "invoice.finalized") {
+    const inv = event.data?.object;
+    const invoiceId = inv?.id as string | undefined;
+    const hostedUrl = (inv?.hosted_invoice_url as string | null) ?? null;
+    const orderId = (inv?.metadata?.order_id as string | null) ?? null;
+
+    if (invoiceId && orderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (admin as any)
+        .from("orders")
+        .update({
+          stripe_invoice_id: invoiceId,
+          stripe_hosted_invoice_url: hostedUrl,
+          status: "invoiced",
+        })
+        .eq("id", orderId);
+      if (error) {
+        console.error("[stripe-webhook] invoice.finalized update failed:", error);
+      }
+    }
+    return NextResponse.json({ received: true });
+  }
+
+  // ── V1 event : invoice.paid ────────────────────────────────────
+  // Le client a payé la facture (carte ou virement — dans les deux cas
+  // Stripe fait le reversement au traiteur via transfer_data). On
+  // marque la commande comme payée et on trace le paiement.
+  if (event.type === "invoice.paid") {
+    const inv = event.data?.object;
+    const invoiceId = inv?.id as string | undefined;
+    const orderId = (inv?.metadata?.order_id as string | null) ?? null;
+    const catererId = (inv?.metadata?.caterer_id as string | null) ?? null;
+    const paymentIntentId = (inv?.payment_intent as string | null) ?? null;
+    const chargeId = (inv?.charge as string | null) ?? null;
+    const amountPaidCents = Number(inv?.amount_paid ?? 0);
+    const amountDueCents = Number(inv?.amount_due ?? 0);
+    const applicationFeeCents = Number(inv?.application_fee_amount ?? 0);
+    const currency = (inv?.currency as string) ?? "eur";
+    const now = new Date().toISOString();
+
+    if (!invoiceId || !orderId) {
+      console.warn("[stripe-webhook] invoice.paid sans invoiceId/orderId");
+      return NextResponse.json({ received: true });
+    }
+
+    // Met à jour la commande → "paid" et s'assure que stripe_invoice_id
+    // est bien renseigné (filet de sécurité si invoice.finalized a raté).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: orderErr } = await (admin as any)
+      .from("orders")
+      .update({
+        status: "paid",
+        stripe_invoice_id: invoiceId,
+      })
+      .eq("id", orderId);
+    if (orderErr) {
+      console.error("[stripe-webhook] invoice.paid order update failed:", orderErr);
+    }
+
+    // Trace une ligne payments pour l'historique. On ne sait pas si une
+    // ligne existe déjà (pas de checkout session sur ce flow) — on passe
+    // par une clé stripe_invoice_id pour l'idempotence.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from("payments")
+      .select("id")
+      .eq("stripe_invoice_id", invoiceId)
+      .maybeSingle();
+
+    if (existing) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin as any)
+        .from("payments")
+        .update({
+          status: "succeeded",
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_charge_id: chargeId,
+          succeeded_at: now,
+          last_event_at: now,
+        })
+        .eq("id", existing.id);
+    } else if (catererId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (admin as any).from("payments").insert({
+        order_id: orderId,
+        caterer_id: catererId,
+        stripe_invoice_id: invoiceId,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_charge_id: chargeId,
+        status: "succeeded",
+        amount_total_cents: amountPaidCents || amountDueCents,
+        application_fee_cents: applicationFeeCents,
+        amount_to_caterer_cents:
+          (amountPaidCents || amountDueCents) - applicationFeeCents,
+        currency,
+        succeeded_at: now,
+        last_event_at: now,
+      });
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
+  // ── V1 event : invoice.payment_failed ──────────────────────────
+  // La carte du client a été refusée, ou le virement a été rejeté.
+  // On trace pour alerter côté plateforme, mais on ne change pas le
+  // statut de la commande (elle reste "invoiced" — Stripe relancera
+  // automatiquement selon les smart retries).
+  if (event.type === "invoice.payment_failed") {
+    const inv = event.data?.object;
+    const invoiceId = inv?.id as string | undefined;
+    const orderId = (inv?.metadata?.order_id as string | null) ?? null;
+    const failureMessage =
+      (inv?.last_finalization_error?.message as string | undefined) ??
+      (inv?.last_payment_error?.message as string | undefined) ??
+      null;
+    const now = new Date().toISOString();
+
+    if (invoiceId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: existing } = await (admin as any)
+        .from("payments")
+        .select("id")
+        .eq("stripe_invoice_id", invoiceId)
+        .maybeSingle();
+
+      if (existing) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin as any)
+          .from("payments")
+          .update({
+            status: "failed",
+            failure_reason: failureMessage,
+            last_event_at: now,
+          })
+          .eq("id", existing.id);
+      }
+    }
+    console.warn(
+      `[stripe-webhook] invoice.payment_failed order=${orderId} invoice=${invoiceId}: ${failureMessage}`,
+    );
     return NextResponse.json({ received: true });
   }
 

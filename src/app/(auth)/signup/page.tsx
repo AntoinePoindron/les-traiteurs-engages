@@ -25,7 +25,10 @@ export default function SignupPage() {
   const [siret,       setSiret]       = useState("");
   const [companyName, setCompanyName] = useState("");
   const [catererName, setCatererName] = useState("");
-  const [esatStatus,  setEsatStatus]  = useState<"esat" | "ea">("esat");
+  // 4 types supportés : ESAT / EA (handicap), EI / ACI (insertion).
+  // Valeurs en minuscules côté form, converties vers l'enum uppercase
+  // (ESAT / EA / EI / ACI) dans l'action serveur.
+  const [structureType, setStructureType] = useState<"esat" | "ea" | "ei" | "aci">("esat");
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -46,7 +49,7 @@ export default function SignupPage() {
     fd.set("siret",         siret);
     fd.set("company_name",  companyName);
     fd.set("caterer_name",  catererName);
-    fd.set("esat_status",   esatStatus);
+    fd.set("structure_type", structureType);
 
     const res = await signupAction(fd);
 
@@ -335,41 +338,41 @@ export default function SignupPage() {
                     Type de structure
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    <label className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium cursor-pointer transition-colors ${
-                      esatStatus === "esat"
-                        ? "border-terracotta bg-terracotta/5 text-dark"
-                        : "border-gray-200 text-gray-medium hover:border-gray-300"
-                    }`}>
-                      <input
-                        type="radio"
-                        name="esat_status"
-                        value="esat"
-                        checked={esatStatus === "esat"}
-                        onChange={() => setEsatStatus("esat")}
-                        className="sr-only"
-                      />
-                      ESAT
-                    </label>
-                    <label className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium cursor-pointer transition-colors ${
-                      esatStatus === "ea"
-                        ? "border-terracotta bg-terracotta/5 text-dark"
-                        : "border-gray-200 text-gray-medium hover:border-gray-300"
-                    }`}>
-                      <input
-                        type="radio"
-                        name="esat_status"
-                        value="ea"
-                        checked={esatStatus === "ea"}
-                        onChange={() => setEsatStatus("ea")}
-                        className="sr-only"
-                      />
-                      EA
-                    </label>
+                    {([
+                      { value: "esat", label: "ESAT",  sub: "Handicap" },
+                      { value: "ea",   label: "EA",    sub: "Handicap" },
+                      { value: "ei",   label: "EI",    sub: "Insertion" },
+                      { value: "aci",  label: "ACI",   sub: "Insertion" },
+                    ] as const).map((t) => {
+                      const active = structureType === t.value;
+                      return (
+                        <label
+                          key={t.value}
+                          className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2.5 rounded-xl border text-sm font-medium cursor-pointer transition-colors ${
+                            active
+                              ? "border-terracotta bg-terracotta/5 text-dark"
+                              : "border-gray-200 text-gray-medium hover:border-gray-300"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="structure_type"
+                            value={t.value}
+                            checked={active}
+                            onChange={() => setStructureType(t.value)}
+                            className="sr-only"
+                          />
+                          <span>{t.label}</span>
+                          <span className="text-[10px] font-normal text-gray-medium">{t.sub}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                   <p className="mt-1.5 text-xs text-gray-medium">
-                    Seuls les ESAT permettent le calcul AGEFIPH côté client. Vous pourrez
-                    compléter le reste de votre fiche (logo, photos, prestations) après
-                    inscription.
+                    Secteur protégé (ESAT / EA) ou insertion professionnelle
+                    (EI / ACI). Seuls les ESAT permettent le calcul AGEFIPH
+                    côté client. Vous pourrez compléter le reste de votre
+                    fiche (logo, photos, prestations) après inscription.
                   </p>
                 </div>
               </>

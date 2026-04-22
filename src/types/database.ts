@@ -147,11 +147,32 @@ export type ServiceTypeConfig = {
   lead_time_days?: number | null;
 };
 
+/**
+ * Type de structure inclusive. Enum côté DB (extensible via
+ * `alter type caterer_structure_type add value '…'`).
+ *
+ * Regroupements métier utilisés par le catalogue :
+ *   - STPA (Secteur du Travail Protégé et Adapté) : ESAT + EA
+ *   - SIAE (Structure d'Insertion par l'Activité Économique) : EI + ACI
+ */
+export type CatererStructureType = "ESAT" | "EA" | "EI" | "ACI";
+
+/** Regroupements utilisés comme filtres catalogue. */
+export type CatererStructureGroup = "STPA" | "SIAE";
+
+export const STRUCTURE_TYPE_GROUP: Record<CatererStructureType, CatererStructureGroup> = {
+  ESAT: "STPA",
+  EA:   "STPA",
+  EI:   "SIAE",
+  ACI:  "SIAE",
+};
+
 export type Caterer = {
   id: string;
   name: string;
   siret: string | null;
   esat_status: boolean;
+  structure_type: CatererStructureType;
   address: string | null;
   city: string | null;
   zip_code: string | null;
@@ -235,6 +256,7 @@ export type QuoteRequest = {
   drinks_alcohol_details: string | null;
   drinks_hot: boolean;
   service_waitstaff: boolean;
+  service_waitstaff_details: string | null;
   service_equipment: boolean;
   service_decoration: boolean;
   service_other: string | null;

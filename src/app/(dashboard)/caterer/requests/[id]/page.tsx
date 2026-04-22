@@ -119,14 +119,14 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
         drinks_soft, drinks_soft_details,
         drinks_alcohol, drinks_alcohol_details,
         drinks_hot,
-        service_waitstaff,
+        service_waitstaff, service_waitstaff_details,
         service_equipment,
         service_equipment_verres, service_equipment_nappes,
         service_equipment_tables, service_equipment_other,
         service_setup, service_setup_time, service_setup_other,
         service_decoration, service_other,
         description, message_to_caterer, status, created_at,
-        companies ( name, logo_url ),
+        companies ( name, siret, address, city, zip_code, logo_url ),
         users ( id, first_name, last_name, email )
       )
     `)
@@ -143,7 +143,14 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
     response_rank: number | null;
     quote_requests:
       | (QuoteRequest & {
-          companies: { name: string; logo_url: string | null } | null;
+          companies: {
+            name: string;
+            siret: string | null;
+            address: string | null;
+            city: string | null;
+            zip_code: string | null;
+            logo_url: string | null;
+          } | null;
           users: {
             id: string;
             first_name: string | null;
@@ -278,7 +285,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
 
   // ── Services additionnels (structured with sub-detail) ─────
   const serviceItems: { label: string; detail?: string }[] = [];
-  if (request.service_waitstaff) serviceItems.push({ label: "Personnel" });
+  if (request.service_waitstaff) serviceItems.push({ label: "Personnel", detail: request.service_waitstaff_details || undefined });
   if (request.service_equipment) {
     const equipmentSub = [
       request.service_equipment_verres && "Verres",
@@ -385,84 +392,68 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   L&apos;événement
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Date">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Calendar size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        Date
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        {eventDate}
-                        {(request.event_start_time || request.event_end_time) && (
-                          <span className="font-normal">
-                            {" · "}
-                            {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
-                          </span>
-                        )}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      {eventDate}
+                      {(request.event_start_time || request.event_end_time) && (
+                        <span className="font-normal">
+                          {" · "}
+                          {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
+                        </span>
+                      )}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Lieu">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <MapPin size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        Lieu
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        {request.event_address}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      {request.event_address}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Convives">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Users size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        Convives
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        {request.guest_count} personnes
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      {request.guest_count} personnes
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Prestation">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Utensils size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        Prestation
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                        {(MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type ?? "—")}
-                        {request.is_full_day && request.meal_type_secondary && (
-                          <span className="font-normal">
-                            {" + "}
-                            {MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}
-                          </span>
-                        )}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                      {(MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type ?? "—")}
+                      {request.is_full_day && request.meal_type_secondary && (
+                        <span className="font-normal">
+                          {" + "}
+                          {MEAL_TYPE_LABELS[request.meal_type_secondary] ?? request.meal_type_secondary}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </div>
 
@@ -584,66 +575,45 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
               {(request.budget_global != null || request.budget_per_person != null || request.budget_flexibility) && (
                 <div className="flex flex-col gap-3">
                   {request.budget_global != null && (
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0" aria-label="Budget total">
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                        aria-hidden="true"
                       >
                         <Euro size={15} style={{ color: "#1A3A52" }} />
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span
-                          className="text-[10px] font-bold uppercase text-black"
-                          style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
-                        >
-                          Budget total
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                          {request.budget_global.toLocaleString("fr-FR")} €
-                        </span>
-                      </div>
+                      <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {request.budget_global.toLocaleString("fr-FR")} €
+                      </span>
                     </div>
                   )}
                   {request.budget_per_person != null && (
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0" aria-label="Budget par personne">
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                        aria-hidden="true"
                       >
                         <Users size={15} style={{ color: "#1A3A52" }} />
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span
-                          className="text-[10px] font-bold uppercase text-black"
-                          style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
-                        >
-                          Par personne
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                          {request.budget_per_person.toLocaleString("fr-FR")} €
-                        </span>
-                      </div>
+                      <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {request.budget_per_person.toLocaleString("fr-FR")} € / pers.
+                      </span>
                     </div>
                   )}
                   {request.budget_flexibility && (
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0" aria-label="Flexibilité">
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                        aria-hidden="true"
                       >
                         <Percent size={15} style={{ color: "#1A3A52" }} />
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span
-                          className="text-[10px] font-bold uppercase text-black"
-                          style={{ letterSpacing: "0.06em", fontFamily: "Marianne, system-ui, sans-serif" }}
-                        >
-                          Flexibilité
-                        </span>
-                        <span className="text-sm font-bold text-black truncate" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                          {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
-                        </span>
-                      </div>
+                      <span className="text-sm font-bold text-black truncate min-w-0" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
+                        {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -740,6 +710,21 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
                   eventDate: request.event_date,
                   eventAddress: request.event_address,
                   mealTypeLabel: MEAL_TYPE_LABELS[request.meal_type ?? ""] ?? request.meal_type,
+                  client: {
+                    companyName: request.companies?.name ?? null,
+                    contactName: clientUser
+                      ? `${clientUser.first_name ?? ""} ${clientUser.last_name ?? ""}`.trim() || null
+                      : null,
+                    email: clientUser?.email ?? null,
+                    siret: request.companies?.siret ?? null,
+                    address: [
+                      request.companies?.address,
+                      request.companies?.zip_code,
+                      request.companies?.city,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || null,
+                  },
                 };
                 return (
                   <div className="flex flex-col gap-3">
@@ -924,7 +909,7 @@ function Chip({
   const palette: Record<typeof tone, { bg: string; fg: string }> = {
     drink:   { bg: "#E0F2FE", fg: "#075985" }, // bleu clair
     service: { bg: "#F0F4F7", fg: "#1A3A52" }, // navy doux
-    diet:    { bg: "#DCFCE7", fg: "#16A34A" }, // vert
+    diet:    { bg: "#F5F1E8", fg: "#1A3A52" }, // crème (aligné sur catalogue)
   };
   const { bg, fg } = palette[tone];
   return (

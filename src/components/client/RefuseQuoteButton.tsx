@@ -21,8 +21,8 @@ export default function RefuseQuoteButton({ action, quoteId, requestId }: Refuse
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold transition-colors border"
-        style={{ ...mFont, borderColor: "#DC2626", color: "#DC2626", backgroundColor: "transparent" }}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#DC2626] border border-[#DC2626] bg-transparent hover:bg-[#FFF5F5] transition-colors"
+        style={mFont}
       >
         <XCircle size={13} />
         Refuser ce devis

@@ -20,6 +20,14 @@
   --color-gray-light: #F5F5F5;
   --color-gray-medium: #9CA3AF;
 
+  /* Landing page — alignée sur le cream de l'app connectée pour
+     une continuité visuelle entre landing et dashboard. */
+  --color-landing-cream: #FAF7F2;
+  --color-coral: #F06B5B;
+  --color-coral-soft: #F9C5C0;
+  --color-dark-red: #B70102;
+  --color-pink-soft: #FFDDDD;
+
   /* Fonts */
   --font-display: var(--font-fraunces), Georgia, serif;
   --font-body: var(--font-marianne), system-ui, sans-serif;
@@ -68,6 +76,25 @@
        url("/fonts/Marianne/Marianne-Bold.woff") format("woff");
   font-weight: 700;
   font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================
+   POLICE FRAUNCES (chargement local)
+   ============================================ */
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces/Fraunces-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces/Fraunces-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
   font-display: swap;
 }
 
@@ -123,4 +150,183 @@ h1, h2, h3, h4, h5, h6 {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #C4714A80;
+}
+
+/* ============================================
+   LANDING PAGE — styles custom
+   Laissés hors de tout @layer pour battre les styles de preflight
+   Tailwind (cascade : unlayered > layered, à spécificité égale).
+   ============================================ */
+
+.landing-root {
+    font-family: "Marianne", Arial, sans-serif;
+    color: #1A3A52;
+    background-color: #FAF7F2;
+  }
+
+  .landing-root h1,
+  .landing-root h2,
+  .landing-root h3 {
+    font-family: "Fraunces", Georgia, serif;
+  }
+
+  .landing-root .font-fraunces {
+    font-family: "Fraunces", Georgia, serif;
+  }
+
+  .landing-root .font-fraunces-italic {
+    font-family: "Fraunces", Georgia, serif;
+    font-style: italic;
+  }
+
+  .landing-root .font-marianne {
+    font-family: "Marianne", Arial, sans-serif;
+  }
+
+  /* ── Section "Comment ça fonctionne" timeline ── */
+
+  .steps-container {
+    position: relative;
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .steps-path-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .steps-path-wrapper img {
+    display: block;
+    height: 100%;
+    width: auto;
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+  }
+
+  .steps-grid {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 800 / 800;
+  }
+
+  .step-abs {
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .step-text {
+    max-width: 230px;
+  }
+
+  .step-marker {
+    width: 104px;
+    height: 104px;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+
+  @media (min-width: 640px) {
+    .step-marker {
+      width: 120px;
+      height: 120px;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .steps-grid {
+      aspect-ratio: 800 / 800;
+    }
+    .step-1 { top: -5%;  left: 24%; flex-direction: row; }
+    .step-1 .step-text { text-align: left; }
+    .step-2 { top: 26%;  right: 23%; left: auto; flex-direction: row-reverse; }
+    .step-2 .step-text { text-align: right; }
+    .step-3 { top: 60%;  left: 23%; flex-direction: row; }
+    .step-3 .step-text { text-align: left; }
+    .step-4 { top: 94%;  right: 24%; left: auto; flex-direction: row-reverse; }
+    .step-4 .step-text { text-align: right; }
+  }
+
+  @media (max-width: 639px) {
+    .steps-path-wrapper {
+      display: none;
+    }
+    .steps-container {
+      max-width: 400px;
+    }
+    .steps-grid {
+      aspect-ratio: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2.5rem;
+    }
+    .step-abs {
+      position: static;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0.75rem;
+    }
+    .step-text {
+      max-width: 280px;
+      text-align: center;
+    }
+  }
+
+  /* ── Badge "Lancement" ── */
+  .badge-launch {
+    display: inline-block;
+    border: 1.5px solid white;
+    border-radius: 8px;
+    padding: 0.4rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 400;
+    color: white;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Soulignement décoratif (pinceau) sur les titres ── */
+  .title-deco {
+    position: relative;
+    display: inline-block;
+  }
+
+  .title-deco::before {
+    content: '';
+    display: block;
+    width: 50px;
+    height: 50px;
+    margin: 0 auto 0.5rem;
+    rotate: 40deg;
+    background: url('/images/landing/deco-brush-strokes.png') no-repeat center;
+    background-size: contain;
+  }
+
+  @media (min-width: 640px) {
+    .title-deco::before {
+      display: none;
+    }
+    .title-deco::after {
+      content: '';
+      display: block;
+      position: absolute;
+      bottom: 40px;
+      right: -60px;
+      width: 80px;
+      height: 80px;
+      rotate: 40deg;
+      background: url('/images/landing/deco-brush-strokes.png') no-repeat center;
+    background-size: contain;
+  }
 }

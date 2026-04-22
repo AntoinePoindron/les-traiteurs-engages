@@ -4,7 +4,7 @@ import { useState, useRef, useTransition } from "react";
 import { Upload, Trash2, Plus, Check, Eye } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { updateCatererProfile } from "@/app/(dashboard)/caterer/profile/actions";
-import type { Caterer } from "@/types/database";
+import type { Caterer, CatererStructureType } from "@/types/database";
 import type { ServiceConfig } from "@/app/(dashboard)/caterer/profile/actions";
 import CatererProfilePreviewModal from "@/components/caterer/CatererProfilePreviewModal";
 
@@ -204,7 +204,12 @@ export default function ProfileForm({ caterer, catererId }: ProfileFormProps) {
 
   // Form state
   const [name, setName] = useState(caterer.name);
-  const [esatStatus, setEsatStatus] = useState(caterer.esat_status);
+  // Le type de structure est la source de vérité — esat_status est
+  // dérivé automatiquement (seul ESAT ouvre droit à la valorisation
+  // AGEFIPH). On conserve esat_status en DB pour la rétrocompat.
+  const [structureType, setStructureType] = useState<CatererStructureType>(
+    caterer.structure_type ?? (caterer.esat_status ? "ESAT" : "EA")
+  );
   const [address, setAddress] = useState(caterer.address ?? "");
   const [city, setCity] = useState(caterer.city ?? "");
   const [zipCode, setZipCode] = useState(caterer.zip_code ?? "");
@@ -313,7 +318,8 @@ export default function ProfileForm({ caterer, catererId }: ProfileFormProps) {
     startTransition(async () => {
       const result = await updateCatererProfile({
         name,
-        esat_status: esatStatus,
+        esat_status: structureType === "ESAT",
+        structure_type: structureType,
         address,
         city,
         zip_code: zipCode,
@@ -419,13 +425,19 @@ export default function ProfileForm({ caterer, catererId }: ProfileFormProps) {
 
               <Field label="Type de structure">
                 <select
-                  value={esatStatus ? "esat" : "ea"}
-                  onChange={(e) => setEsatStatus(e.target.value === "esat")}
+                  value={structureType}
+                  onChange={(e) => setStructureType(e.target.value as CatererStructureType)}
                   className={inputClass}
                   style={inputStyle}
                 >
-                  <option value="esat">ESAT</option>
-                  <option value="ea">EA</option>
+                  <optgroup label="Handicap (STPA)">
+                    <option value="ESAT">ESAT - Établissement et Service d&apos;Aide par le Travail</option>
+                    <option value="EA">EA - Entreprise Adaptée</option>
+                  </optgroup>
+                  <optgroup label="Insertion professionnelle (SIAE)">
+                    <option value="EI">EI - Entreprise d&apos;Insertion</option>
+                    <option value="ACI">ACI - Atelier et Chantier d&apos;Insertion</option>
+                  </optgroup>
                 </select>
               </Field>
             </div>
@@ -694,7 +706,7 @@ export default function ProfileForm({ caterer, catererId }: ProfileFormProps) {
         <CatererProfilePreviewModal
           data={{
             name,
-            esatStatus,
+            esatStatus: structureType === "ESAT",
             address,
             city,
             zipCode,

@@ -34,7 +34,7 @@ export default async function EditRequestPage({ params }: PageProps) {
       drinks_soft, drinks_soft_details,
       drinks_alcohol, drinks_alcohol_details,
       drinks_hot,
-      service_waitstaff, service_equipment,
+      service_waitstaff, service_waitstaff_details, service_equipment,
       service_equipment_verres, service_equipment_nappes,
       service_equipment_tables, service_equipment_other,
       service_setup, service_setup_time, service_setup_other,
@@ -77,6 +77,7 @@ export default async function EditRequestPage({ params }: PageProps) {
     drinks_alcohol_details: string | null;
     drinks_hot: boolean | null;
     service_waitstaff: boolean | null;
+    service_waitstaff_details: string | null;
     service_equipment: boolean | null;
     service_equipment_verres: boolean | null;
     service_equipment_nappes: boolean | null;
@@ -152,6 +153,7 @@ export default async function EditRequestPage({ params }: PageProps) {
     drinksHot: request.drinks_hot ?? false,
     // Step 5
     serviceWaitstaff: request.service_waitstaff ?? false,
+    serviceWaitstaffDetails: request.service_waitstaff_details ?? "",
     serviceEquipment: request.service_equipment ?? false,
     serviceEquipmentVerres: request.service_equipment_verres ?? false,
     serviceEquipmentNappes: request.service_equipment_nappes ?? false,

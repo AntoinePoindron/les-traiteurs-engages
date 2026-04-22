@@ -81,6 +81,31 @@ export async function saveQuote(
     }
   }
 
+  // Validation d'unicité de la référence par traiteur. Empêche un
+  // même traiteur de créer deux devis avec la même ref, ce qui
+  // ferait planter la génération de la facture Stripe (le numéro
+  // `number` de la facture est dérivé de la ref devis et doit être
+  // unique côté Stripe). On ignore naturellement le devis en cours
+  // d'update (`quote_id`). Un index unique (caterer_id, reference) en
+  // DB sert de dernier filet de sécurité.
+  const trimmedRef = (payload.reference ?? "").trim();
+  if (trimmedRef) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let dupQuery: any = (supabase as any)
+      .from("quotes")
+      .select("id")
+      .eq("caterer_id", catererId)
+      .eq("reference", trimmedRef)
+      .limit(1);
+    if (payload.quote_id) dupQuery = dupQuery.neq("id", payload.quote_id);
+    const { data: duplicate } = await dupQuery.maybeSingle();
+    if (duplicate) {
+      return {
+        error: `La référence "${trimmedRef}" est déjà utilisée sur un autre de vos devis. Choisissez-en une différente.`,
+      };
+    }
+  }
+
   const details = payload.items.map((item) => ({
     label: item.label,
     description: item.description || undefined,

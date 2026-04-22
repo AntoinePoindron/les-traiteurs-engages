@@ -65,6 +65,40 @@ export default async function QuoteEditPage({ params }: PageProps) {
     logo_url: c?.logo_url ?? null,
   };
 
+  // Infos client pour l'en-tête de la preview
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const req = requestData as any;
+  const [{ data: companyData }, { data: clientUserData }] = await Promise.all([
+    req.company_id
+      ? supabase
+          .from("companies")
+          .select("name, siret, address, city, zip_code")
+          .eq("id", req.company_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    req.client_user_id
+      ? supabase
+          .from("users")
+          .select("first_name, last_name, email")
+          .eq("id", req.client_user_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const co = companyData as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cu = clientUserData as any;
+  const clientInfo = {
+    companyName: co?.name ?? null,
+    contactName:
+      cu?.first_name || cu?.last_name
+        ? `${cu?.first_name ?? ""} ${cu?.last_name ?? ""}`.trim() || null
+        : null,
+    email: cu?.email ?? null,
+    siret: co?.siret ?? null,
+    address: [co?.address, co?.zip_code, co?.city].filter(Boolean).join(", ") || null,
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const q = quoteData as any;
 
@@ -74,6 +108,7 @@ export default async function QuoteEditPage({ params }: PageProps) {
       requestId={id}
       defaultReference={q.reference ?? ""}
       catererInfo={catererInfo}
+      clientInfo={clientInfo}
       draftQuote={{
         id: q.id,
         reference: q.reference ?? "",

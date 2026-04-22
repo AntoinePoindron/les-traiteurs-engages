@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Send, Paperclip, ChevronLeft, MessageSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { randomUUID } from "@/lib/uuid";
 import type { Message } from "@/types/database";
 import type { PartnerProfile, PendingThread } from "@/app/(dashboard)/client/messages/page";
 
@@ -410,7 +411,7 @@ export default function MessagingLayout({
 
     // Optimistic insert
     const optimistic: Message = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       thread_id: threadId,
       sender_id: myUserId,
       recipient_id: partnerId,

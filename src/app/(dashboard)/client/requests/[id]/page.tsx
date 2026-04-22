@@ -8,9 +8,14 @@ import ContactCard from "@/components/ui/ContactCard";
 import OrderCreatedModal from "@/components/client/OrderCreatedModal";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
 import RefuseQuoteButton from "@/components/client/RefuseQuoteButton";
-import type { CatererInfo, PreviewData } from "@/components/caterer/QuotePreviewModal";
+import type { CatererInfo, ClientInfo, PreviewData } from "@/components/caterer/QuotePreviewModal";
 import type { QuoteRequestStatus } from "@/types/database";
 import { formatDateTime } from "@/lib/format";
+import {
+  PLATFORM_FEE_LABEL,
+  PLATFORM_FEE_RATE_DISPLAY,
+  computePlatformFeeDisplay,
+} from "@/lib/stripe/constants";
 import { acceptQuoteAction, refuseQuoteAction, cancelRequestAction } from "./actions";
 
 interface PageProps {
@@ -79,7 +84,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
       dietary_bio, dietary_other,
       drinks_water_still, drinks_water_sparkling, drinks_soft, drinks_soft_details,
       drinks_alcohol, drinks_alcohol_details, drinks_hot,
-      service_waitstaff,
+      service_waitstaff, service_waitstaff_details,
       service_equipment, service_equipment_verres, service_equipment_nappes, service_equipment_tables, service_equipment_other,
       service_setup, service_setup_time, service_setup_other,
       message_to_caterer, description, is_compare_mode
@@ -92,6 +97,41 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const request = reqData as any;
+
+  // Infos client (pour l'en-tête des devis PDF). L'utilisateur courant
+  // est le client ; on remonte sa fiche + sa company pour nourrir le
+  // bloc "Client" de la preview.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: myProfileRaw } = await (supabase as any)
+    .from("users")
+    .select("first_name, last_name, email, company_id")
+    .eq("id", user!.id)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const myProfile = myProfileRaw as any;
+  const myCompanyId: string | null = myProfile?.company_id ?? null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: myCompanyRaw } = myCompanyId
+    ? await (supabase as any)
+        .from("companies")
+        .select("name, siret, address, city, zip_code")
+        .eq("id", myCompanyId)
+        .maybeSingle()
+    : { data: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const myCompany = myCompanyRaw as any;
+  const clientInfo = {
+    companyName: myCompany?.name ?? null,
+    contactName:
+      myProfile?.first_name || myProfile?.last_name
+        ? `${myProfile?.first_name ?? ""} ${myProfile?.last_name ?? ""}`.trim() || null
+        : null,
+    email: myProfile?.email ?? null,
+    siret: myCompany?.siret ?? null,
+    address: [myCompany?.address, myCompany?.zip_code, myCompany?.city]
+      .filter(Boolean)
+      .join(", ") || null,
+  };
 
   // Fetch caterers linked to this request (avec le statut qrc, sert
   // à filtrer les devis visibles ci-dessous : seuls les qrc en
@@ -204,7 +244,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
   // Services
   const serviceItems: { label: string; detail?: string }[] = [];
-  if (request.service_waitstaff) serviceItems.push({ label: "Personnel" });
+  if (request.service_waitstaff) serviceItems.push({ label: "Personnel", detail: request.service_waitstaff_details || undefined });
   if (request.service_equipment) {
     const sub = [
       request.service_equipment_verres && "Verres",
@@ -284,84 +324,68 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                   L&apos;événement
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Date">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Calendar size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                        Date
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={mFont}>
-                        {eventDate}
-                        {(request.event_start_time || request.event_end_time) && (
-                          <span className="font-normal">
-                            {" · "}
-                            {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
-                          </span>
-                        )}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                      {eventDate}
+                      {(request.event_start_time || request.event_end_time) && (
+                        <span className="font-normal">
+                          {" · "}
+                          {[request.event_start_time, request.event_end_time].filter(Boolean).join(" – ")}
+                        </span>
+                      )}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Lieu">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <MapPin size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                        Lieu
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={mFont}>
-                        {request.event_address}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                      {request.event_address}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Convives">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Users size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                        Convives
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={mFont}>
-                        {request.guest_count} personnes
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                      {request.guest_count} personnes
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0" aria-label="Prestation">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                      aria-hidden="true"
                     >
                       <Utensils size={15} style={{ color: "#1A3A52" }} />
                     </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                        Prestation
-                      </span>
-                      <span className="text-sm font-bold text-black truncate" style={mFont}>
-                        {serviceLabel}
-                        {serviceLabelSecondary && (
-                          <span className="font-normal">
-                            {" + "}
-                            {serviceLabelSecondary}
-                          </span>
-                        )}
-                      </span>
-                    </div>
+                    <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                      {serviceLabel}
+                      {serviceLabelSecondary && (
+                        <span className="font-normal">
+                          {" + "}
+                          {serviceLabelSecondary}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </div>
 
@@ -420,16 +444,24 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                   >
                     Préférences et contraintes
                   </p>
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-1.5">
                     {dietItems.map((item) => (
-                      <Row
+                      <span
                         key={item.label}
-                        label={item.label}
-                        value={item.count ? `${item.count} personnes` : undefined}
-                      />
+                        className="px-2 py-0.5 rounded-full text-xs font-bold text-[#1A3A52]"
+                        style={{ ...mFont, backgroundColor: "#F5F1E8" }}
+                      >
+                        {item.label}
+                        {item.count ? ` · ${item.count} pers.` : ""}
+                      </span>
                     ))}
                     {request.dietary_other && (
-                      <Row label="Autre" value={request.dietary_other} />
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-bold text-[#1A3A52]"
+                        style={{ ...mFont, backgroundColor: "#F5F1E8" }}
+                      >
+                        {request.dietary_other}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -467,57 +499,45 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                 {(request.budget_global || request.budget_per_person || request.budget_flexibility) && (
                   <div className="flex flex-col gap-3">
                     {request.budget_global && (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0" aria-label="Budget total">
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                           style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                          aria-hidden="true"
                         >
                           <Euro size={15} style={{ color: "#1A3A52" }} />
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                            Budget total
-                          </span>
-                          <span className="text-sm font-bold text-black truncate" style={mFont}>
-                            {Number(request.budget_global).toLocaleString("fr-FR")} €
-                          </span>
-                        </div>
+                        <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                          {Number(request.budget_global).toLocaleString("fr-FR")} €
+                        </span>
                       </div>
                     )}
                     {request.budget_per_person && (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0" aria-label="Budget par personne">
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                           style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                          aria-hidden="true"
                         >
                           <Users size={15} style={{ color: "#1A3A52" }} />
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                            Par personne
-                          </span>
-                          <span className="text-sm font-bold text-black truncate" style={mFont}>
-                            {Number(request.budget_per_person).toLocaleString("fr-FR")} €
-                          </span>
-                        </div>
+                        <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                          {Number(request.budget_per_person).toLocaleString("fr-FR")} € / pers.
+                        </span>
                       </div>
                     )}
                     {request.budget_flexibility && (
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0" aria-label="Flexibilité">
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                           style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+                          aria-hidden="true"
                         >
                           <Percent size={15} style={{ color: "#1A3A52" }} />
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-                            Flexibilité
-                          </span>
-                          <span className="text-sm font-bold text-black truncate" style={mFont}>
-                            {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
-                          </span>
-                        </div>
+                        <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+                          {FLEXIBILITY_LABELS[request.budget_flexibility] ?? request.budget_flexibility}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -577,6 +597,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                           isAccepted={quote.status === "accepted"}
                           isRefused={quote.status === "refused"}
                           canAccept={!acceptedQuote && quote.status === "sent"}
+                          clientInfo={clientInfo}
                         />
                       ))}
                       {hasPendingQuote && !acceptedQuote && request.status !== "cancelled" && request.status !== "completed" && (
@@ -667,7 +688,7 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
 function QuoteCard({
   quote, requestId, eventDate, eventAddress, guestCount, mealTypeLabel,
-  isAccepted, isRefused, canAccept,
+  isAccepted, isRefused, canAccept, clientInfo,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   quote: any;
@@ -679,6 +700,7 @@ function QuoteCard({
   isAccepted: boolean;
   isRefused: boolean;
   canAccept: boolean;
+  clientInfo?: ClientInfo | null;
 }) {
   const caterer = quote.caterers;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
@@ -724,6 +746,7 @@ function QuoteCard({
     eventDate:     new Date(eventDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
     eventAddress,
     mealTypeLabel,
+    client:        clientInfo ?? null,
   };
 
   return (
@@ -783,6 +806,11 @@ function QuoteCard({
           <span className="ml-auto text-[10px] font-bold text-[#DC2626]">Refusé</span>
         )}
       </div>
+
+      {/* Rappel frais de mise en relation — ajoutés sur la facture finale */}
+      <p className="text-[10px] text-[#9CA3AF]" style={mFont}>
+        +&nbsp;{computePlatformFeeDisplay(Number(quote.total_amount_ht)).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;€ de {PLATFORM_FEE_LABEL.toLowerCase()} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%, ajoutés au devis)
+      </p>
 
       {/* Motif du refus (si saisi) — compact */}
       {isRefused && quote.refusal_reason && (

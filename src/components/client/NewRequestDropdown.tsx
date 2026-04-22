@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ChefHat, LayoutGrid } from "lucide-react";
+import { Plus, Search, LayoutGrid } from "lucide-react";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
@@ -51,7 +51,7 @@ export default function NewRequestDropdown() {
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
               style={{ backgroundColor: "#F0F4F7" }}
             >
-              <ChefHat size={15} style={{ color: "#1A3A52" }} />
+              <Search size={15} style={{ color: "#1A3A52" }} />
             </div>
             <div>
               <p className="text-sm font-bold text-black" style={mFont}>

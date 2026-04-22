@@ -1,11 +1,15 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ChevronLeft, FileText, Calendar, MapPin, Users, Utensils, Clock, Truck } from "lucide-react";
+import { Calendar, MapPin, Users, Utensils, Clock, Truck, ExternalLink, FileText } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
+import SubmitButton from "@/components/ui/SubmitButton";
+import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
 import { formatDateTime } from "@/lib/format";
+import { generateOrderInvoice } from "@/lib/stripe/invoices";
+import { deriveInvoiceReference } from "@/lib/stripe/constants";
 import type { OrderStatus } from "@/types/database";
 
 interface PageProps {
@@ -60,6 +64,32 @@ async function advanceStatus(formData: FormData) {
     .update({ status: nextStatus })
     .eq("id", orderId);
 
+  // Passage en livré → on génère la facture Stripe automatiquement.
+  // generateOrderInvoice est idempotent : si une facture existe déjà,
+  // il ne la recrée pas. En cas d'échec (compte traiteur non validé,
+  // etc.), on laisse la commande en "delivered" — le traiteur pourra
+  // retenter via le bouton manuel.
+  if (nextStatus === "delivered") {
+    const res = await generateOrderInvoice(orderId);
+    if (!res.ok) {
+      console.error("[advanceStatus] generateOrderInvoice failed:", res.error);
+    }
+  }
+
+  redirect(`/caterer/orders/${orderId}`);
+}
+
+// ── Server action : (re)générer manuellement la facture ──────
+// Utilisé comme filet de sécurité si la génération automatique a
+// échoué au moment du passage en "livrée".
+
+async function triggerInvoiceGeneration(formData: FormData) {
+  "use server";
+  const orderId = formData.get("orderId") as string;
+  const res = await generateOrderInvoice(orderId);
+  if (!res.ok) {
+    console.error("[triggerInvoiceGeneration] failed:", res.error);
+  }
   redirect(`/caterer/orders/${orderId}`);
 }
 
@@ -78,12 +108,13 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     .from("orders")
     .select(`
       id, status, delivery_date, delivery_address, notes, created_at,
+      stripe_invoice_id, stripe_hosted_invoice_url,
       quotes!inner (
-        id, reference, total_amount_ht, notes, details, caterer_id,
+        id, reference, valid_until, total_amount_ht, notes, details, caterer_id,
         quote_requests!inner (
           id, title, event_date, event_start_time, event_end_time,
           event_address, guest_count, meal_type, description,
-          companies ( name, logo_url ),
+          companies ( name, siret, address, city, zip_code, logo_url ),
           users ( id, first_name, last_name, email )
         )
       )
@@ -100,9 +131,12 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     delivery_address: string;
     notes: string | null;
     created_at: string;
+    stripe_invoice_id: string | null;
+    stripe_hosted_invoice_url: string | null;
     quotes: {
       id: string;
       reference: string | null;
+      valid_until: string | null;
       total_amount_ht: number;
       notes: string | null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -118,7 +152,14 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
         guest_count: number;
         meal_type: string;
         description: string | null;
-        companies: { name: string; logo_url: string | null } | null;
+        companies: {
+          name: string;
+          siret: string | null;
+          address: string | null;
+          city: string | null;
+          zip_code: string | null;
+          logo_url: string | null;
+        } | null;
         users: { id: string; first_name: string | null; last_name: string | null; email: string } | null;
       } | null;
     } | null;
@@ -142,23 +183,10 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     .maybeSingle() as unknown as { data: { thread_id: string } | null };
   const threadId = threadMsg?.thread_id ?? null;
 
-  // Fetch invoice if exists
-  const { data: invoiceData } = await supabase
-    .from("invoices")
-    .select("id, esat_invoice_ref, amount_ht, amount_ttc, issued_at, due_at, status")
-    .eq("order_id", id)
-    .maybeSingle();
-
-  type InvoiceRow = {
-    id: string;
-    esat_invoice_ref: string | null;
-    amount_ht: number;
-    amount_ttc: number;
-    issued_at: string | null;
-    due_at: string | null;
-    status: string;
-  };
-  const invoice = invoiceData as InvoiceRow | null;
+  // La facture est désormais portée par Stripe — on ne lit plus la table
+  // `invoices` locale (conservée pour l'historique ESAT si besoin). Les
+  // deux champs stripe_* sur orders suffisent à l'afficher ici.
+  const hasStripeInvoice = !!order.stripe_invoice_id;
 
   // Calcul totaux depuis details
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,6 +211,59 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     ? `${clientUser.first_name ?? ""} ${clientUser.last_name ?? ""}`.trim() || clientUser.email
     : null;
 
+  // Fetch caterer info pour la preview devis (header du PDF)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: catererData } = await (supabase as any)
+    .from("caterers")
+    .select("name, address, city, zip_code, siret, logo_url")
+    .eq("id", catererId)
+    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cd = catererData as any;
+  const catererInfo = {
+    name: cd?.name ?? "",
+    address: cd?.address ?? null,
+    city: cd?.city ?? null,
+    zip_code: cd?.zip_code ?? null,
+    siret: cd?.siret ?? null,
+    logo_url: cd?.logo_url ?? null,
+  };
+
+  // Preview data du devis — consommée par QuoteViewerButton pour ouvrir
+  // la modale d'aperçu / PDF. On rebuild le format attendu par PreviewData.
+  const previewData = {
+    reference: q.reference ?? "",
+    validUntil: q.valid_until ?? "",
+    notes: q.notes ?? "",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    items: (q.details ?? []).map((d: any, idx: number) => ({
+      id: d.id ?? String(idx),
+      label: d.label ?? "",
+      description: d.description ?? "",
+      quantity: d.quantity ?? 1,
+      unit_price_ht: d.unit_price_ht ?? 0,
+      tva_rate: d.tva_rate ?? 10,
+      section: (d.section ?? "main") as "main" | "drinks" | "extra",
+    })),
+    totalHT,
+    tvaMap,
+    totalTVA,
+    totalTTC,
+    guestCount: qr.guest_count,
+    eventDate: qr.event_date,
+    eventAddress: qr.event_address,
+    mealTypeLabel: MEAL_TYPE_LABELS[qr.meal_type] ?? qr.meal_type,
+    client: {
+      companyName: qr.companies?.name ?? null,
+      contactName: clientName,
+      email: clientUser?.email ?? null,
+      siret: qr.companies?.siret ?? null,
+      address: [qr.companies?.address, qr.companies?.zip_code, qr.companies?.city]
+        .filter(Boolean)
+        .join(", ") || null,
+    },
+  };
+
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
   return (
@@ -206,7 +287,12 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 Créée le {formatDateTime(order.created_at)}
               </p>
               {q.reference && (
-                <p className="text-sm text-[#9CA3AF]" style={mFont}>{q.reference}</p>
+                <p className="text-sm text-[#9CA3AF]" style={mFont}>
+                  Devis {q.reference}
+                  {hasStripeInvoice && deriveInvoiceReference(q.reference) && (
+                    <> · Facture {deriveInvoiceReference(q.reference)}</>
+                  )}
+                </p>
               )}
             </div>
             <StatusBadge variant={order.status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"} />
@@ -247,8 +333,11 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 )}
               </div>
 
-              {/* Prestations */}
-              <div className="bg-white rounded-lg p-6 flex flex-col gap-6">
+              {/* Prestations — simple liste sans prix (les prix sont dans
+                  le récapitulatif à droite et dans le PDF du devis). Le
+                  traiteur voit ici le "quoi", le "combien en €" vit à
+                  côté. */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-5">
                 <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
                   Détail des prestations
                 </p>
@@ -256,67 +345,36 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 {(["main", "drinks", "extra"] as const).map((key) => {
                   if (!sections[key]?.length) return null;
                   return (
-                    <div key={key} className="flex flex-col gap-3">
+                    <div key={key} className="flex flex-col gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]" style={mFont}>
                         {SECTION_TITLES[key]}
                       </p>
-                      <table className="w-full" style={{ borderCollapse: "collapse" }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid #F3F4F6" }}>
-                            {["Désignation", "Qté", "PU HT", "TVA", "Total HT"].map((h, i) => (
-                              <th key={h} className="pb-2 text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wide" style={{ ...mFont, textAlign: i === 0 ? "left" : "right" }}>
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sections[key].map((item: { id?: string; label?: string; description?: string; quantity?: number; unit_price_ht?: number; tva_rate?: number }, i: number) => (
-                            <tr key={i} style={{ borderBottom: "1px solid #F9FAFB" }}>
-                              <td className="py-3 align-top">
-                                <p className="text-sm font-bold text-black" style={mFont}>{item.label}</p>
-                                {item.description && (
-                                  <p className="text-xs text-[#9CA3AF]" style={mFont}>{item.description}</p>
-                                )}
-                              </td>
-                              <td className="py-3 text-xs text-right text-[#444]" style={mFont}>{item.quantity}</td>
-                              <td className="py-3 text-xs text-right text-[#444]" style={mFont}>{fmt(item.unit_price_ht ?? 0)}</td>
-                              <td className="py-3 text-xs text-right text-[#444]" style={mFont}>{item.tva_rate} %</td>
-                              <td className="py-3 text-xs text-right font-bold text-black" style={mFont}>
-                                {fmt((item.quantity ?? 1) * (item.unit_price_ht ?? 0))}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <ul className="flex flex-col gap-1.5">
+                        {sections[key].map((item: { id?: string; label?: string; description?: string; quantity?: number }, i: number) => (
+                          <li key={i} className="flex items-start gap-3 py-1.5" style={{ borderBottom: "1px solid #F9FAFB" }}>
+                            {/* Chip wrapper à largeur fixe + alignement droite,
+                                pour que les libellés démarrent tous à la même
+                                colonne quelle que soit la taille du nombre. */}
+                            <div className="shrink-0 flex justify-end pt-0.5" style={{ width: 52 }}>
+                              <span
+                                className="rounded-md px-2 py-0.5 text-xs font-bold whitespace-nowrap"
+                                style={{ backgroundColor: "#F5F1E8", color: "#1A3A52", ...mFont }}
+                              >
+                                ×{item.quantity ?? 1}
+                              </span>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <p className="text-sm font-bold text-black" style={mFont}>{item.label}</p>
+                              {item.description && (
+                                <p className="text-xs text-[#6B7280]" style={mFont}>{item.description}</p>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   );
                 })}
-
-                {/* Totaux */}
-                <div className="flex flex-col gap-2 items-end pt-2" style={{ borderTop: "1px solid #F3F4F6" }}>
-                  <div className="flex justify-between w-64">
-                    <p className="text-sm text-[#6B7280]" style={mFont}>Total HT</p>
-                    <p className="text-sm font-bold text-black" style={mFont}>{fmt(totalHT)}</p>
-                  </div>
-                  {Object.entries(tvaMap).sort(([a],[b]) => Number(a)-Number(b)).map(([rate, amount]) => (
-                    <div key={rate} className="flex justify-between w-64">
-                      <p className="text-xs text-[#9CA3AF]" style={mFont}>TVA {rate} %</p>
-                      <p className="text-xs text-[#9CA3AF]" style={mFont}>{fmt(amount)}</p>
-                    </div>
-                  ))}
-                  <div className="flex justify-between w-64 pt-2" style={{ borderTop: "1px solid #E5E7EB" }}>
-                    <p className="text-base font-bold text-black" style={mFont}>Total TTC</p>
-                    <p className="font-display font-bold text-2xl text-[#1A3A52]" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                      {fmt(totalTTC)}
-                    </p>
-                  </div>
-                  {qr.guest_count > 0 && (
-                    <p className="text-xs text-[#9CA3AF]" style={mFont}>
-                      soit {fmt(totalTTC / qr.guest_count)} / personne
-                    </p>
-                  )}
-                </div>
               </div>
 
               {/* Notes du devis */}
@@ -331,61 +389,153 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
 
             </div>
 
-            {/* ── Colonne droite : actions commande + client + détails événement ── */}
+            {/* ── Colonne droite : récap (liens + totaux) + actions + client + livraison ── */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* Actions commande : CTA avancement + facture — concerne l'objet */}
-              {(transition || (order.status === "delivered" && !invoice) || invoice) && (
-                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                  {invoice && (
-                    <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-black" style={mFont}>Facture</p>
-                        <StatusBadge
-                          variant={invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "disputed" : "invoiced"}
-                          customLabel={invoice.status === "paid" ? "Payée" : invoice.status === "overdue" ? "En retard" : "En attente"}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {invoice.esat_invoice_ref && (
-                          <Row label="Référence" value={invoice.esat_invoice_ref} />
-                        )}
-                        <Row label="Montant HT"  value={fmt(invoice.amount_ht)} />
-                        <Row label="Montant TTC" value={fmt(invoice.amount_ttc)} />
-                        {invoice.issued_at && (
-                          <Row label="Émise le"  value={fmtDate(invoice.issued_at)} />
-                        )}
-                        {invoice.due_at && (
-                          <Row label="Échéance"  value={fmtDate(invoice.due_at)} />
-                        )}
-                      </div>
-                    </div>
-                  )}
+              {/* Récapitulatif : tout-en-un.
+                  - Si la commande est en litige, le motif apparaît en
+                    tout premier sous le titre (info prioritaire).
+                  - Si la facture Stripe a été émise, l'encart apparaît
+                    ensuite.
+                  - Bouton du devis + totaux au centre.
+                  - Actions contextuelles (transition de statut ou
+                    émission manuelle de facture) en bas.
+                  - Lien vers la demande initiale toujours tout en bas. */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
+                  Récapitulatif
+                </p>
 
-                  {transition ? (
-                    <form action={advanceStatus}>
-                      <input type="hidden" name="orderId" value={order.id} />
-                      <input type="hidden" name="nextStatus" value={transition.next} />
-                      <button
-                        type="submit"
-                        className="w-full flex items-center justify-center px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity cursor-pointer"
-                        style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                {order.status === "disputed" && (
+                  <div
+                    className="rounded-lg p-4 flex flex-col gap-2"
+                    style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA" }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold" style={{ color: "#991B1B", ...mFont }}>
+                        Commande en litige
+                      </p>
+                      <StatusBadge variant="disputed" />
+                    </div>
+                    {order.notes ? (
+                      <p
+                        className="text-xs leading-relaxed whitespace-pre-wrap"
+                        style={{ color: "#7F1D1D", ...mFont }}
                       >
-                        {transition.label}
-                      </button>
-                    </form>
-                  ) : order.status === "delivered" && !invoice ? (
-                    <Link
-                      href={`/caterer/orders/${order.id}/invoice`}
+                        {order.notes.replace(/^\s*LITIGE\s*:\s*/i, "")}
+                      </p>
+                    ) : (
+                      <p className="text-xs italic" style={{ color: "#B91C1C", ...mFont }}>
+                        Aucun motif renseigné — contactez le client pour clarifier le litige.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {hasStripeInvoice && (
+                  <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-black" style={mFont}>Facture Stripe</p>
+                      <StatusBadge
+                        variant={order.status === "paid" ? "paid" : "invoiced"}
+                        customLabel={order.status === "paid" ? "Payée" : "Envoyée"}
+                      />
+                    </div>
+                    <p className="text-xs text-[#444] leading-relaxed" style={mFont}>
+                      La facture a été envoyée par mail au client. Vous serez
+                      crédité du montant dû (hors commission) dès qu&apos;il
+                      paiera par carte ou virement.
+                    </p>
+                    {order.stripe_hosted_invoice_url && (
+                      <a
+                        href={order.stripe_hosted_invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#1A3A52] hover:text-white transition-colors"
+                        style={mFont}
+                      >
+                        <ExternalLink size={12} />
+                        Voir la facture
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Bouton qui ouvre le PDF du devis */}
+                <QuoteViewerButton caterer={catererInfo} data={previewData} />
+
+                {/* Totaux */}
+                <div className="flex flex-col gap-1 pt-2" style={{ borderTop: "1px solid #F3F4F6" }}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-[#6B7280]" style={mFont}>Total HT</p>
+                    <p className="text-xs font-bold text-black" style={mFont}>{fmt(totalHT)}</p>
+                  </div>
+                  {Object.entries(tvaMap).sort(([a], [b]) => Number(a) - Number(b)).map(([rate, amount]) => (
+                    <div key={rate} className="flex items-center justify-between">
+                      <p className="text-xs text-[#6B7280]" style={mFont}>TVA {rate} %</p>
+                      <p className="text-xs text-[#6B7280]" style={mFont}>{fmt(amount)}</p>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-1 mt-1" style={{ borderTop: "1px solid #E5E7EB" }}>
+                    <p className="text-sm font-bold text-black" style={mFont}>Total TTC</p>
+                    <p className="text-base font-bold" style={{ color: "#1A3A52", ...mFont }}>
+                      {fmt(totalTTC)}
+                    </p>
+                  </div>
+                  {qr.guest_count > 0 && (
+                    <p className="text-[10px] text-[#9CA3AF] text-right mt-0.5" style={mFont}>
+                      soit {fmt(totalTTC / qr.guest_count)} / personne
+                    </p>
+                  )}
+                </div>
+
+                {/* Action bouton — selon statut.
+                    Le passage en "delivered" déclenche aussi la
+                    génération de la facture Stripe côté server, ce qui
+                    peut prendre ~1-2 s (création customer + invoice +
+                    finalize + send). SubmitButton affiche un spinner
+                    en attendant. */}
+                {transition && (
+                  <form action={advanceStatus}>
+                    <input type="hidden" name="orderId" value={order.id} />
+                    <input type="hidden" name="nextStatus" value={transition.next} />
+                    <SubmitButton
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
                       style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                      pendingLabel="Mise à jour en cours…"
                     >
-                      <FileText size={13} />
-                      Créer la facture
-                    </Link>
-                  ) : null}
-                </div>
-              )}
+                      {transition.label}
+                    </SubmitButton>
+                  </form>
+                )}
+                {order.status === "delivered" && !hasStripeInvoice && (
+                  // Filet de sécurité : génération auto à la livraison a
+                  // échoué — retry manuel.
+                  <form action={triggerInvoiceGeneration} className="flex flex-col gap-2">
+                    <input type="hidden" name="orderId" value={order.id} />
+                    <p className="text-xs text-[#9CA3AF]" style={mFont}>
+                      La facture n&apos;a pas encore pu être émise automatiquement.
+                    </p>
+                    <SubmitButton
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                      style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                      pendingLabel="Émission en cours…"
+                    >
+                      Émettre la facture
+                    </SubmitButton>
+                  </form>
+                )}
+
+                {/* Lien vers la demande initiale — toujours tout en bas */}
+                <Link
+                  href={`/caterer/requests/${qr.id}`}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                  style={mFont}
+                >
+                  <FileText size={13} />
+                  Voir la demande initiale
+                </Link>
+              </div>
 
               {/* Carte client */}
               <ContactCard
@@ -430,19 +580,10 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
   );
 }
 
-function Row({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
-  return (
-    <div className="flex gap-3 items-start justify-between">
-      <p className="text-xs text-[#6B7280] shrink-0" style={mFont}>{label}</p>
-      <p className="text-xs font-bold text-black text-right" style={mFont}>{value}</p>
-    </div>
-  );
-}
-
 /**
- * Ligne "icône + label + valeur" — même style que le résumé des demandes.
+ * Ligne "icône + valeur" — le label sémantique est préservé pour
+ * l'accessibilité (aria-label) mais pas rendu visuellement : l'icône
+ * contextuelle suffit pour identifier la donnée.
  */
 function IconRow({
   icon: Icon,
@@ -456,19 +597,17 @@ function IconRow({
   if (!value) return null;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
   return (
-    <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center gap-2 min-w-0" aria-label={label}>
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
         style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+        aria-hidden="true"
       >
         <Icon size={15} style={{ color: "#1A3A52" }} />
       </div>
-      <div className="flex flex-col min-w-0">
-        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-          {label}
-        </span>
-        <span className="text-sm font-bold text-black truncate" style={mFont}>{value}</span>
-      </div>
+      <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>
+        {value}
+      </span>
     </div>
   );
 }

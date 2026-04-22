@@ -17,6 +17,7 @@ import {
   BarChart2,
   LogOut,
   ChefHat,
+  Search,
   HelpCircle,
   Bell,
   CreditCard,
@@ -42,7 +43,7 @@ const catererNav: NavItem[] = [
 
 const clientUserNav: NavItem[] = [
   { label: "Tableau de bord",      href: "/client/dashboard", icon: LayoutDashboard },
-  { label: "Trouver un traiteur",  href: "/client/search",    icon: ChefHat },
+  { label: "Trouver un traiteur",  href: "/client/search",    icon: Search },
   { label: "Mes demandes",         href: "/client/requests",  icon: FileText },
   { label: "Mes commandes",        href: "/client/orders",    icon: ShoppingBag },
   { label: "Messagerie",           href: "/client/messages",  icon: MessageSquare },
@@ -52,7 +53,7 @@ const clientUserNav: NavItem[] = [
 
 const clientAdminNav: NavItem[] = [
   { label: "Tableau de bord",     href: "/client/dashboard", icon: LayoutDashboard },
-  { label: "Trouver un traiteur", href: "/client/search",    icon: ChefHat },
+  { label: "Trouver un traiteur", href: "/client/search",    icon: Search },
   { label: "Demandes",            href: "/client/requests",  icon: FileText },
   { label: "Commandes",           href: "/client/orders",    icon: ShoppingBag },
   { label: "Facturation",         href: "/client/invoices",  icon: Receipt },

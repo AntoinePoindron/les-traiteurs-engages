@@ -7,7 +7,7 @@ export default async function ClientSearchPage() {
 
   const { data } = await supabase
     .from("caterers")
-    .select("id, name, city, zip_code, description, photos, logo_url, esat_status, delivery_radius_km, service_config, dietary_vegetarian, dietary_gluten_free, dietary_halal, dietary_bio")
+    .select("id, name, city, zip_code, description, photos, logo_url, esat_status, structure_type, delivery_radius_km, service_config, dietary_vegetarian, dietary_gluten_free, dietary_halal, dietary_bio")
     .eq("is_validated", true)
     .order("name");
 

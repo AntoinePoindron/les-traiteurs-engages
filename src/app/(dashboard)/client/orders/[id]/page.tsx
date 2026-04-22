@@ -1,13 +1,20 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { TrendingUp, FileText, CreditCard, Download, CheckCircle, Clock, Info, Calendar, MapPin, Users, Truck } from "lucide-react";
+import { TrendingUp, FileText, CreditCard, CheckCircle, Info, Calendar, MapPin, Users, Clock, Truck, ExternalLink } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
-import PayOrderButton from "./pay/PayOrderButton";
-import RefreshPaymentButton from "./pay/RefreshPaymentButton";
 import { formatDateTime } from "@/lib/format";
+import {
+  PLATFORM_FEE_LABEL,
+  PLATFORM_FEE_RATE_DISPLAY,
+  PLATFORM_FEE_TVA_RATE,
+  computePlatformFeeHt,
+  computePlatformFeeTva,
+  computePlatformFeeTtc,
+  deriveInvoiceReference,
+} from "@/lib/stripe/constants";
 import type { OrderStatus } from "@/types/database";
 
 // ── Constants ──────────────────────────────────────────────────
@@ -54,6 +61,7 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
     .from("orders")
     .select(`
       id, status, delivery_date, delivery_address, notes, created_at,
+      stripe_invoice_id, stripe_hosted_invoice_url,
       quotes!inner (
         id, reference, total_amount_ht, amount_per_person, valorisable_agefiph,
         valid_until, notes, details,
@@ -72,27 +80,10 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
 
   if (!orderRaw) notFound();
 
-  // Facture (si la commande est facturée)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: invoiceRaw } = await (supabase as any)
-    .from("invoices")
-    .select("id, esat_invoice_ref, amount_ht, amount_ttc, issued_at, due_at, status")
-    .eq("order_id", id)
-    .maybeSingle();
-
-  type InvoiceRow = {
-    id: string;
-    esat_invoice_ref: string | null;
-    amount_ht: number;
-    amount_ttc: number;
-    issued_at: string | null;
-    due_at: string | null;
-    status: string;
-  };
-  const invoice = invoiceRaw as InvoiceRow | null;
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const order = orderRaw as any;
+  const hasStripeInvoice = !!order.stripe_invoice_id;
+  const hostedInvoiceUrl: string | null = order.stripe_hosted_invoice_url ?? null;
   const quote = order.quotes;
   const caterer = quote?.caterers;
   const qr = quote?.quote_requests;
@@ -141,6 +132,12 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
   const totalHT = Number(quote?.total_amount_ht ?? 0);
   const totalTTC = totalHT + totalTVA;
 
+  // Frais de mise en relation — ajoutés en sus du devis traiteur.
+  const feeHt  = computePlatformFeeHt(totalHT);
+  const feeTva = computePlatformFeeTva(totalHT);
+  const feeTtc = computePlatformFeeTtc(totalHT);
+  const grandTotalTtc = totalTTC + feeTtc;
+
   const eventDate = qr?.event_date
     ? new Date(qr.event_date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : "—";
@@ -164,11 +161,11 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
     amount_total_cents: number;
     succeeded_at: string | null;
   }>;
-  const hasSucceededPayment = paymentsList.some((p) => p.status === "succeeded");
-  const hasPendingPayment = paymentsList.some((p) => p.status === "pending" || p.status === "processing");
-  const isOrderPayable =
-    !hasSucceededPayment &&
-    (order.status === "delivered" || order.status === "invoiced");
+  const hasSucceededPayment =
+    order.status === "paid" || paymentsList.some((p) => p.status === "succeeded");
+  // Payable = facture émise, pas encore payée. Le paiement se fait
+  // directement sur la hosted invoice page Stripe (carte ou virement).
+  const isOrderPayable = hasStripeInvoice && !hasSucceededPayment;
 
   return (
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
@@ -190,6 +187,14 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
               <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
                 Créée le {formatDateTime(order.created_at)}
               </p>
+              {quote?.reference && (
+                <p className="text-sm text-[#9CA3AF]" style={mFont}>
+                  Devis {quote.reference}
+                  {hasStripeInvoice && deriveInvoiceReference(quote.reference) && (
+                    <> · Facture {deriveInvoiceReference(quote.reference)}</>
+                  )}
+                </p>
+              )}
               {qr?.company_services?.name && (
                 <p className="text-sm text-[#6B7280] mt-1" style={mFont}>
                   Service : {qr.company_services.name}
@@ -330,34 +335,76 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 <p className="text-xs text-[#9CA3AF] italic" style={mFont}>Détail du devis non disponible.</p>
               )}
 
-              {/* Totaux */}
+              {/* Totaux — ventilation prestation / frais plateforme, puis
+                  total à payer. Pas de "Total TTC" intermédiaire pour éviter
+                  toute confusion avec le grand total final. */}
               {items.length > 0 && (
                 <>
                   <div className="border-t border-[#F3F4F6]" />
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between">
-                      <span className="text-xs text-[#6B7280]" style={mFont}>Total HT</span>
-                      <span className="text-sm font-bold text-black" style={mFont}>
-                        {totalHT.toLocaleString("fr-FR")} €
-                      </span>
-                    </div>
-                    {Object.entries(tvaMap).map(([rate, amount]) => (
-                      <div key={rate} className="flex justify-between">
-                        <span className="text-xs text-[#6B7280]" style={mFont}>TVA {rate} %</span>
-                        <span className="text-xs text-[#6B7280]" style={mFont}>
-                          {amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  <div className="flex flex-col gap-3">
+
+                    {/* Bloc prestation traiteur */}
+                    <div className="flex flex-col gap-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]" style={mFont}>
+                        Prestation traiteur
+                      </p>
+                      <div className="flex justify-between">
+                        <span className="text-xs text-[#6B7280]" style={mFont}>Total HT</span>
+                        <span className="text-xs text-black" style={mFont}>
+                          {totalHT.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                         </span>
                       </div>
-                    ))}
-                    <div className="flex justify-between pt-2 border-t border-[#F3F4F6]">
-                      <span className="text-sm font-bold text-black" style={mFont}>Total TTC</span>
-                      <span className="text-sm font-bold text-black" style={mFont}>
-                        {totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                      {Object.entries(tvaMap).map(([rate, amount]) => (
+                        <div key={rate} className="flex justify-between">
+                          <span className="text-xs text-[#6B7280]" style={mFont}>TVA {rate} %</span>
+                          <span className="text-xs text-[#6B7280]" style={mFont}>
+                            {amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          </span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between">
+                        <span className="text-xs font-bold text-black" style={mFont}>Sous-total TTC</span>
+                        <span className="text-xs font-bold text-black" style={mFont}>
+                          {totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bloc frais de mise en relation */}
+                    <div className="flex flex-col gap-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]" style={mFont}>
+                        {PLATFORM_FEE_LABEL} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés)
+                      </p>
+                      <div className="flex justify-between">
+                        <span className="text-xs text-[#6B7280]" style={mFont}>Montant HT</span>
+                        <span className="text-xs text-black" style={mFont}>
+                          {feeHt.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-xs text-[#6B7280]" style={mFont}>TVA {PLATFORM_FEE_TVA_RATE} %</span>
+                        <span className="text-xs text-[#6B7280]" style={mFont}>
+                          {feeTva.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-xs font-bold text-black" style={mFont}>Sous-total TTC</span>
+                        <span className="text-xs font-bold text-black" style={mFont}>
+                          {feeTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Total à payer */}
+                    <div className="flex justify-between pt-3 border-t-2 border-[#1A3A52]">
+                      <span className="text-sm font-bold text-black" style={mFont}>Total à payer</span>
+                      <span className="text-base font-bold text-[#1A3A52]" style={mFont}>
+                        {grandTotalTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
                       </span>
                     </div>
                     {quote?.amount_per_person != null && (
                       <div className="flex justify-between">
-                        <span className="text-xs text-[#9CA3AF]" style={mFont}>Soit par personne</span>
+                        <span className="text-xs text-[#9CA3AF]" style={mFont}>Soit par personne (prestation)</span>
                         <span className="text-xs text-[#9CA3AF]" style={mFont}>
                           {Number(quote.amount_per_person).toLocaleString("fr-FR")} € HT
                         </span>
@@ -393,52 +440,66 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
             {/* Colonne droite */}
             <div className="flex flex-col gap-4 w-full md:w-[324px] md:shrink-0">
 
-              {/* Bloc paiement */}
-              {(isOrderPayable || hasSucceededPayment) && (
+              {/* Bloc paiement / facture Stripe */}
+              {(isOrderPayable || hasSucceededPayment || hasStripeInvoice) && (
                 <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
                   <p className="font-display font-bold text-xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    Paiement
+                    Facture & paiement
                   </p>
 
                   {hasSucceededPayment ? (
-                    <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
-                      <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
-                      <div className="flex flex-col gap-0.5">
-                        <p className="text-sm font-bold" style={{ color: "#16A34A", ...mFont }}>
-                          Règlement effectué
-                        </p>
-                        <p className="text-xs text-[#6B7280]" style={mFont}>
-                          Merci ! Le traiteur a été crédité.
-                        </p>
+                    <>
+                      <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#DCFCE7" }}>
+                        <CheckCircle size={16} style={{ color: "#16A34A" }} className="shrink-0 mt-0.5" />
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-sm font-bold" style={{ color: "#16A34A", ...mFont }}>
+                            Règlement effectué
+                          </p>
+                          <p className="text-xs text-[#6B7280]" style={mFont}>
+                            Merci ! Le traiteur a été crédité.
+                          </p>
+                        </div>
                       </div>
+                      {hostedInvoiceUrl && (
+                        <a
+                          href={hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
+                          style={mFont}
+                        >
+                          <ExternalLink size={12} />
+                          Voir la facture
+                        </a>
+                      )}
+                    </>
+                  ) : isOrderPayable ? (
+                    <div className="flex flex-col gap-3">
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        Votre facture est disponible. Réglez-la directement en ligne — par carte
+                        (paiement immédiat) ou par virement bancaire (IBAN fourni sur la facture).
+                      </p>
+                      {hostedInvoiceUrl ? (
+                        <a
+                          href={hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                          style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                        >
+                          <CreditCard size={13} />
+                          Voir et payer la facture — {grandTotalTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                        </a>
+                      ) : (
+                        <p className="text-xs text-[#9CA3AF] italic" style={mFont}>
+                          Lien de paiement en cours de génération — rafraîchissez la page dans quelques secondes.
+                        </p>
+                      )}
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-3">
-                      {hasPendingPayment && (
-                        <div className="flex items-start gap-3 p-3 rounded-lg" style={{ backgroundColor: "#FFF3CD" }}>
-                          <Clock size={16} style={{ color: "#B45309" }} className="shrink-0 mt-0.5" />
-                          <div className="flex flex-col gap-1 min-w-0">
-                            <p className="text-sm font-bold" style={{ color: "#B45309", ...mFont }}>
-                              Tentative non finalisée
-                            </p>
-                            <p className="text-xs text-[#6B7280]" style={mFont}>
-                              Votre précédente tentative n&apos;a pas été menée au bout. Si vous venez de
-                              payer, cliquez sur &quot;Vérifier le statut&quot;.
-                            </p>
-                            <div className="pt-1">
-                              <RefreshPaymentButton orderId={order.id} />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <p className="text-xs text-[#6B7280]" style={mFont}>
-                        Prestation livrée — il ne reste plus qu&apos;à régler. Paiement sécurisé par Stripe.
-                      </p>
-                      <PayOrderButton
-                        orderId={order.id}
-                        amountLabel={`${totalTTC.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
-                      />
-                    </div>
+                    <p className="text-xs text-[#9CA3AF] italic" style={mFont}>
+                      La facture sera émise automatiquement dès que le traiteur aura marqué la prestation comme livrée.
+                    </p>
                   )}
                 </div>
               )}
@@ -491,75 +552,6 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 />
               )}
 
-              {/* Facture (bloc standalone) */}
-              {invoice && (
-                <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
-                  <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <FileText size={13} style={{ color: "#1A3A52" }} />
-                        <p className="text-xs font-bold text-black" style={mFont}>Facture</p>
-                      </div>
-                      <StatusBadge
-                        variant={invoice.status === "paid" ? "paid" : invoice.status === "overdue" ? "disputed" : "invoiced"}
-                        customLabel={invoice.status === "paid" ? "Payée" : invoice.status === "overdue" ? "En retard" : "En attente"}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {invoice.esat_invoice_ref && (
-                        <RightRow label="Référence" value={invoice.esat_invoice_ref} />
-                      )}
-                      <RightRow
-                        label="Montant HT"
-                        value={`${Number(invoice.amount_ht).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €`}
-                      />
-                      <RightRow
-                        label="Montant TTC"
-                        value={`${Number(invoice.amount_ttc).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €`}
-                      />
-                      {invoice.issued_at && (
-                        <RightRow label="Émise le" value={new Date(invoice.issued_at).toLocaleDateString("fr-FR")} />
-                      )}
-                      {invoice.due_at && (
-                        <div className="flex items-start justify-between gap-4">
-                          <span className="text-xs text-[#6B7280]" style={mFont}>Échéance</span>
-                          <span
-                            className="text-xs font-bold text-right"
-                            style={{
-                              color: new Date(invoice.due_at) < new Date() && invoice.status !== "paid" ? "#DC2626" : "#000",
-                              ...mFont,
-                            }}
-                          >
-                            {new Date(invoice.due_at).toLocaleDateString("fr-FR")}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2 pt-1">
-                      <Link
-                        href={`/client/orders/${id}/invoice`}
-                        className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#F5F1E8] transition-colors"
-                        style={mFont}
-                      >
-                        <Download size={12} />
-                        Voir &amp; télécharger
-                      </Link>
-                      {invoice.status !== "paid" && (
-                        <button
-                          type="button"
-                          disabled
-                          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-white opacity-40"
-                          style={{ backgroundColor: "#1A3A52", ...mFont }}
-                          title="Module de paiement à venir"
-                        >
-                          <CreditCard size={12} />
-                          Payer la facture
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -568,19 +560,10 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
   );
 }
 
-function RightRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-xs text-[#6B7280]" style={mFont}>{label}</span>
-      <span className="text-xs font-bold text-black text-right" style={mFont}>{value}</span>
-    </div>
-  );
-}
-
 /**
- * Ligne "icône + label + valeur" — même style que les autres pages détail.
+ * Ligne "icône + valeur" — le label sémantique est préservé pour
+ * l'accessibilité (aria-label) mais pas rendu visuellement : l'icône
+ * contextuelle suffit pour identifier la donnée.
  */
 function IconRow({
   icon: Icon,
@@ -594,19 +577,15 @@ function IconRow({
   if (!value) return null;
   const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
   return (
-    <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center gap-2 min-w-0" aria-label={label}>
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
         style={{ backgroundColor: "rgba(26,58,82,0.08)" }}
+        aria-hidden="true"
       >
         <Icon size={15} style={{ color: "#1A3A52" }} />
       </div>
-      <div className="flex flex-col min-w-0">
-        <span className="text-[10px] font-bold uppercase text-black" style={{ letterSpacing: "0.06em", ...mFont }}>
-          {label}
-        </span>
-        <span className="text-sm font-bold text-black truncate" style={mFont}>{value}</span>
-      </div>
+      <span className="text-sm font-bold text-black truncate min-w-0" style={mFont}>{value}</span>
     </div>
   );
 }

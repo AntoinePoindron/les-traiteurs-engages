@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import { Send, Paperclip, ChevronLeft, MessageSquare, ChefHat, Building2, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { randomUUID } from "@/lib/uuid";
 import type { Message } from "@/types/database";
 import type { PartnerProfile } from "@/app/(dashboard)/caterer/messages/page";
 
@@ -489,7 +490,7 @@ export default function MessagingLayout({
 
     // Optimistic insert
     const optimistic: Message = {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       thread_id: threadId,
       sender_id: myUserId,
       recipient_id: recipientId,

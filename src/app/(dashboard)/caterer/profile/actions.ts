@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { geocodeAddress } from "@/lib/geocoding";
+import type { CatererStructureType } from "@/types/database";
 
 export type ServiceConfig = {
   enabled: boolean;
@@ -16,6 +17,7 @@ export type ServiceConfig = {
 export type ProfileUpdateData = {
   name: string;
   esat_status: boolean;
+  structure_type: CatererStructureType;
   address: string;
   city: string;
   zip_code: string;
@@ -67,6 +69,7 @@ export async function updateCatererProfile(
     .update({
       name: data.name,
       esat_status: data.esat_status,
+      structure_type: data.structure_type,
       address: data.address || null,
       city: data.city || null,
       zip_code: data.zip_code || null,

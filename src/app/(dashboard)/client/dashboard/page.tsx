@@ -322,15 +322,9 @@ export default async function ClientDashboardPage() {
               </div>
 
               {recentRequests.length === 0 ? (
-                <div className="py-8 text-center flex flex-col items-center gap-2">
+                <div className="py-8 text-center flex flex-col items-center gap-3">
                   <p className="text-sm text-[#6B7280]" style={mFont}>Aucune demande pour le moment.</p>
-                  <Link
-                    href="/client/requests/new"
-                    className="text-sm font-bold text-[#1A3A52] underline underline-offset-2 hover:opacity-70 transition-opacity"
-                    style={mFont}
-                  >
-                    Déposer une demande
-                  </Link>
+                  <NewRequestDropdown />
                 </div>
               ) : (
                 <div className="flex flex-col">

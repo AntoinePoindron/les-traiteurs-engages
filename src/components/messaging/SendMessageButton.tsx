@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { MessageSquare, Send, X, CheckCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { randomUUID } from "@/lib/uuid";
 import Link from "next/link";
 
 interface SendMessageButtonProps {
@@ -55,7 +56,7 @@ export default function SendMessageButton({
       .limit(1)
       .maybeSingle();
 
-    const threadId = existing?.thread_id ?? crypto.randomUUID();
+    const threadId = existing?.thread_id ?? randomUUID();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: insertError } = await (supabase.current as any)
@@ -91,13 +92,8 @@ export default function SendMessageButton({
       {/* Trigger */}
       <button
         onClick={() => setOpen(true)}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold transition-colors border"
-        style={{
-          ...mFont,
-          borderColor: "#1A3A52",
-          color: "#1A3A52",
-          backgroundColor: "transparent",
-        }}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] bg-transparent hover:bg-[#F5F1E8] transition-colors"
+        style={mFont}
       >
         <MessageSquare size={13} />
         Envoyer un message

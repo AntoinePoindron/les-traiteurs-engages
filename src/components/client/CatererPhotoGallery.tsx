@@ -61,10 +61,21 @@ export default function CatererPhotoGallery({ photos, catererName }: Props) {
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
             </button>
           ) : (
-            <div className="flex items-center justify-center w-full h-full">
-              <p className="text-xs text-[#9CA3AF]" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
-                Aucune photo
-              </p>
+            <div className="relative w-full h-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/caterer-photo-placeholder.png"
+                alt=""
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <p
+                  className="px-3 py-1.5 rounded-full bg-white/85 text-xs font-bold text-[#6B7280]"
+                  style={{ fontFamily: "Marianne, system-ui, sans-serif" }}
+                >
+                  Aucune photo
+                </p>
+              </div>
             </div>
           )}
 
@@ -105,7 +116,14 @@ export default function CatererPhotoGallery({ photos, catererName }: Props) {
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                 </button>
-              ) : null}
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src="/images/caterer-photo-placeholder.png"
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              )}
             </div>
           ))}
         </div>

@@ -91,6 +91,19 @@ const SECTION_TITLES: Record<string, string> = {
   extra: "Prestations complémentaires",
 };
 
+/**
+ * Infos plateforme affichées en en-tête de chaque devis — fixes et
+ * partagées entre l'aperçu écran (JSX) et le PDF (print HTML).
+ * Ces valeurs ne changent jamais côté produit (portage juridique par
+ * le GIP Plateforme de l'inclusion).
+ */
+const PLATFORM_INFO = {
+  name:    "Les Traiteurs Engagés",
+  subName: "GIP Plateforme de l'inclusion",
+  address: "6, boulevard Saint-Denis 75010 Paris",
+  siret:   "13003013300016",
+} as const;
+
 // ── Print HTML builder ─────────────────────────────────────────
 
 function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
@@ -166,38 +179,51 @@ function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
 </head>
 <body style="padding:32px;max-width:794px;margin:0 auto;">
 
-  <!-- En-tête -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:2px solid #1A3A52;">
+  <!-- Numéro de devis (bandeau en haut à droite) -->
+  <div style="text-align:right;margin-bottom:24px;">
+    <p style="font-size:20px;font-weight:bold;color:#1A3A52;">DEVIS N° ${data.reference || "—"}</p>
+    ${data.validUntil ? `<p style="font-size:11px;color:#888;margin-top:4px;">Valable jusqu'au ${fmtDate(data.validUntil)}</p>` : ""}
+  </div>
+
+  <!-- Parties : Plateforme / Prestataire (ligne 1) + Client (ligne 2) -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid #E5E7EB;">
+    <!-- Plateforme (fixe) -->
     <div>
-      <h1 style="font-size:28px;font-weight:bold;color:#1A3A52;margin-bottom:4px;">${caterer.name}</h1>
-      ${caterer.address ? `<p style="font-size:12px;color:#666;">${caterer.address}</p>` : ""}
-      ${caterer.zip_code || caterer.city ? `<p style="font-size:12px;color:#666;">${[caterer.zip_code, caterer.city].filter(Boolean).join(" ")}</p>` : ""}
-      ${caterer.siret ? `<p style="font-size:11px;color:#999;margin-top:4px;">SIRET : ${caterer.siret}</p>` : ""}
+      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:6px;">Plateforme</p>
+      <p style="font-size:12px;font-weight:bold;color:#1A3A52;">${PLATFORM_INFO.name}</p>
+      <p style="font-size:12px;color:#333;">${PLATFORM_INFO.subName}</p>
+      <p style="font-size:12px;color:#333;">${PLATFORM_INFO.address}</p>
+      <p style="font-size:11px;color:#666;margin-top:4px;">SIRET : ${PLATFORM_INFO.siret}</p>
     </div>
-    <div style="text-align:right;">
-      <p style="font-size:22px;font-weight:bold;color:#1A3A52;">DEVIS</p>
-      <p style="font-size:14px;font-weight:bold;color:#333;margin-top:4px;">${data.reference}</p>
-      ${data.validUntil ? `<p style="font-size:11px;color:#888;margin-top:4px;">Valable jusqu'au ${fmtDate(data.validUntil)}</p>` : ""}
+
+    <!-- Prestataire (traiteur) -->
+    <div>
+      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:6px;">Prestataire</p>
+      <p style="font-size:12px;font-weight:bold;color:#1A3A52;">${caterer.name || "—"}</p>
+      ${caterer.address ? `<p style="font-size:12px;color:#333;">${caterer.address}</p>` : ""}
+      ${caterer.zip_code || caterer.city ? `<p style="font-size:12px;color:#333;">${[caterer.zip_code, caterer.city].filter(Boolean).join(" ")}</p>` : ""}
+      ${caterer.siret ? `<p style="font-size:11px;color:#666;margin-top:4px;">SIRET : ${caterer.siret}</p>` : ""}
+    </div>
+
+    <!-- Client (sur une 2e ligne à gauche — grid-column: 1 / 2) -->
+    <div style="grid-column:1 / 2;">
+      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:6px;">Client</p>
+      ${data.client?.companyName ? `<p style="font-size:12px;font-weight:bold;color:#1A3A52;">${data.client.companyName}</p>` : ""}
+      ${data.client?.contactName ? `<p style="font-size:12px;color:#333;">${data.client.contactName}</p>` : ""}
+      ${data.client?.address ? `<p style="font-size:12px;color:#333;">${data.client.address}</p>` : ""}
+      ${data.client?.siret ? `<p style="font-size:11px;color:#666;margin-top:4px;">SIRET : ${data.client.siret}</p>` : ""}
+      ${!data.client?.companyName && !data.client?.contactName ? `<p style="font-size:11px;color:#999;font-style:italic;">—</p>` : ""}
     </div>
   </div>
 
-  <!-- Infos événement -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;">
-    <div style="padding:16px;background:#f8f8f8;border-radius:6px;">
-      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:8px;">Événement</p>
-      <p style="font-size:12px;margin-bottom:4px;"><strong>Type :</strong> ${data.mealTypeLabel}</p>
-      <p style="font-size:12px;margin-bottom:4px;"><strong>Date :</strong> ${fmtDate(data.eventDate)}</p>
-      <p style="font-size:12px;margin-bottom:4px;"><strong>Lieu :</strong> ${data.eventAddress}</p>
+  <!-- Infos événement (Client est maintenant dans le header, event seul) -->
+  <div style="margin-bottom:32px;padding:16px;background:#f8f8f8;border-radius:6px;">
+    <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:8px;">Événement</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;">
+      <p style="font-size:12px;"><strong>Type :</strong> ${data.mealTypeLabel}</p>
+      <p style="font-size:12px;"><strong>Date :</strong> ${fmtDate(data.eventDate)}</p>
+      <p style="font-size:12px;"><strong>Lieu :</strong> ${data.eventAddress}</p>
       <p style="font-size:12px;"><strong>Convives :</strong> ${data.guestCount} personnes</p>
-    </div>
-    <div style="padding:16px;background:#f8f8f8;border-radius:6px;">
-      <p style="font-size:11px;font-weight:bold;text-transform:uppercase;letter-spacing:0.05em;color:#555;margin-bottom:8px;">Client</p>
-      ${data.client?.companyName ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Entreprise :</strong> ${data.client.companyName}</p>` : ""}
-      ${data.client?.contactName ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Contact :</strong> ${data.client.contactName}</p>` : ""}
-      ${data.client?.email ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Email :</strong> ${data.client.email}</p>` : ""}
-      ${data.client?.address ? `<p style="font-size:12px;margin-bottom:4px;"><strong>Adresse :</strong> ${data.client.address}</p>` : ""}
-      ${data.client?.siret ? `<p style="font-size:12px;"><strong>SIRET :</strong> ${data.client.siret}</p>` : ""}
-      ${!data.client?.companyName && !data.client?.contactName ? `<p style="font-size:11px;color:#999;font-style:italic;">—</p>` : ""}
     </div>
   </div>
 
@@ -273,9 +299,20 @@ function buildPrintHtml(caterer: CatererInfo, data: PreviewData): string {
 
   ${notesBlock}
 
-  <!-- Pied de page -->
-  <div style="margin-top:48px;padding-top:16px;border-top:1px solid #eee;text-align:center;">
-    <p style="font-size:10px;color:#bbb;">Devis généré par Les Traiteurs Engagés — ${caterer.name}</p>
+  <!-- Pied de page — mention légale mandataire + explication frais plateforme -->
+  <div style="margin-top:48px;padding-top:16px;border-top:1px solid #eee;color:#555;">
+    <p style="font-size:10px;line-height:1.5;margin-bottom:6px;">
+      Devis émis par la plateforme ${PLATFORM_INFO.name}, agissant en qualité de mandataire du Traiteur ${caterer.name || "—"}.
+    </p>
+    <p style="font-size:10px;line-height:1.5;margin-bottom:6px;">
+      La prestation de restauration sera réalisée par le Traiteur ${caterer.name || "—"}, seul responsable de son exécution.
+    </p>
+    <p style="font-size:10px;line-height:1.5;margin-bottom:12px;">
+      Ce devis est soumis aux conditions générales de vente du traiteur.
+    </p>
+    <p style="font-size:10px;line-height:1.5;">
+      Les frais de service plateforme correspondent aux services de mise en relation, coordination et gestion administrative.
+    </p>
   </div>
 
 </body>
@@ -357,54 +394,94 @@ export default function QuotePreviewModal({
             className="bg-white border border-[#E5E7EB] rounded-lg p-10 mx-auto shadow-sm"
             style={{ maxWidth: 680 }}
           >
-            {/* Caterer header */}
+            {/* Numéro de devis */}
+            <div className="text-right mb-6">
+              <p className="text-lg font-bold text-[#1A3A52]" style={mFont}>
+                DEVIS N° {data.reference || "—"}
+              </p>
+              {data.validUntil && (
+                <p className="text-[11px] text-[#9CA3AF] mt-1" style={mFont}>
+                  Valable jusqu&apos;au {fmtDate(data.validUntil)}
+                </p>
+              )}
+            </div>
+
+            {/* Parties : Plateforme / Prestataire (ligne 1) + Client (ligne 2) */}
             <div
-              className="flex justify-between items-start pb-6 mb-8"
-              style={{ borderBottom: "2px solid #1A3A52" }}
+              className="grid grid-cols-2 gap-x-8 gap-y-5 pb-6 mb-8"
+              style={{ borderBottom: "1px solid #E5E7EB" }}
             >
+              {/* Plateforme (fixe) */}
               <div>
-                <p
-                  className="font-bold text-2xl text-[#1A3A52]"
-                  style={mFont}
-                >
-                  {caterer.name}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5" style={mFont}>
+                  Plateforme
+                </p>
+                <p className="text-xs font-bold text-[#1A3A52]" style={mFont}>
+                  {PLATFORM_INFO.name}
+                </p>
+                <p className="text-xs text-[#333]" style={mFont}>
+                  {PLATFORM_INFO.subName}
+                </p>
+                <p className="text-xs text-[#333]" style={mFont}>
+                  {PLATFORM_INFO.address}
+                </p>
+                <p className="text-[11px] text-[#6B7280] mt-1" style={mFont}>
+                  SIRET : {PLATFORM_INFO.siret}
+                </p>
+              </div>
+
+              {/* Prestataire (traiteur) */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5" style={mFont}>
+                  Prestataire
+                </p>
+                <p className="text-xs font-bold text-[#1A3A52]" style={mFont}>
+                  {caterer.name || "—"}
                 </p>
                 {caterer.address && (
-                  <p className="text-xs text-[#6B7280] mt-1" style={mFont}>
-                    {caterer.address}
-                  </p>
+                  <p className="text-xs text-[#333]" style={mFont}>{caterer.address}</p>
                 )}
                 {(caterer.zip_code || caterer.city) && (
-                  <p className="text-xs text-[#6B7280]" style={mFont}>
+                  <p className="text-xs text-[#333]" style={mFont}>
                     {[caterer.zip_code, caterer.city].filter(Boolean).join(" ")}
                   </p>
                 )}
                 {caterer.siret && (
-                  <p className="text-[10px] text-[#9CA3AF] mt-1" style={mFont}>
+                  <p className="text-[11px] text-[#6B7280] mt-1" style={mFont}>
                     SIRET : {caterer.siret}
                   </p>
                 )}
               </div>
-              <div className="text-right">
-                <p
-                  className="text-xl font-bold text-[#1A3A52]"
-                  style={mFont}
-                >
-                  DEVIS
+
+              {/* Client (sur une 2e ligne à gauche) */}
+              <div className="col-start-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-1.5" style={mFont}>
+                  Client
                 </p>
-                <p className="text-sm font-bold text-black mt-1" style={mFont}>
-                  {data.reference}
-                </p>
-                {data.validUntil && (
-                  <p className="text-[11px] text-[#9CA3AF] mt-1" style={mFont}>
-                    Valable jusqu&apos;au {fmtDate(data.validUntil)}
+                {data.client?.companyName && (
+                  <p className="text-xs font-bold text-[#1A3A52]" style={mFont}>
+                    {data.client.companyName}
                   </p>
+                )}
+                {data.client?.contactName && (
+                  <p className="text-xs text-[#333]" style={mFont}>{data.client.contactName}</p>
+                )}
+                {data.client?.address && (
+                  <p className="text-xs text-[#333]" style={mFont}>{data.client.address}</p>
+                )}
+                {data.client?.siret && (
+                  <p className="text-[11px] text-[#6B7280] mt-1" style={mFont}>
+                    SIRET : {data.client.siret}
+                  </p>
+                )}
+                {!data.client?.companyName && !data.client?.contactName && (
+                  <p className="text-xs text-[#9CA3AF] italic" style={mFont}>—</p>
                 )}
               </div>
             </div>
 
-            {/* Event info */}
-            <div className="grid grid-cols-2 gap-4 mb-8">
+            {/* Event info (Client retiré, déplacé dans le header) */}
+            <div className="mb-8">
               <div
                 className="rounded-lg p-4"
                 style={{ backgroundColor: "#F8F9FA" }}
@@ -415,7 +492,7 @@ export default function QuotePreviewModal({
                 >
                   Événement
                 </p>
-                <div className="flex flex-col gap-1">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                   <p className="text-xs" style={mFont}>
                     <span className="font-bold">Type : </span>
                     {data.mealTypeLabel}
@@ -432,52 +509,6 @@ export default function QuotePreviewModal({
                     <span className="font-bold">Convives : </span>
                     {data.guestCount} personnes
                   </p>
-                </div>
-              </div>
-              <div
-                className="rounded-lg p-4"
-                style={{ backgroundColor: "#F8F9FA" }}
-              >
-                <p
-                  className="text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF] mb-2"
-                  style={mFont}
-                >
-                  Client
-                </p>
-                <div className="flex flex-col gap-1">
-                  {data.client?.companyName && (
-                    <p className="text-xs" style={mFont}>
-                      <span className="font-bold">Entreprise : </span>
-                      {data.client.companyName}
-                    </p>
-                  )}
-                  {data.client?.contactName && (
-                    <p className="text-xs" style={mFont}>
-                      <span className="font-bold">Contact : </span>
-                      {data.client.contactName}
-                    </p>
-                  )}
-                  {data.client?.email && (
-                    <p className="text-xs break-all" style={mFont}>
-                      <span className="font-bold">Email : </span>
-                      {data.client.email}
-                    </p>
-                  )}
-                  {data.client?.address && (
-                    <p className="text-xs" style={mFont}>
-                      <span className="font-bold">Adresse : </span>
-                      {data.client.address}
-                    </p>
-                  )}
-                  {data.client?.siret && (
-                    <p className="text-xs" style={mFont}>
-                      <span className="font-bold">SIRET : </span>
-                      {data.client.siret}
-                    </p>
-                  )}
-                  {!data.client?.companyName && !data.client?.contactName && (
-                    <p className="text-xs text-[#9CA3AF] italic" style={mFont}>—</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -730,13 +761,22 @@ export default function QuotePreviewModal({
               </div>
             )}
 
-            {/* Footer */}
+            {/* Footer — mention légale mandataire + explication frais plateforme */}
             <div
-              className="mt-10 pt-4 text-center"
+              className="mt-10 pt-4 flex flex-col gap-1.5"
               style={{ borderTop: "1px solid #F3F4F6" }}
             >
-              <p className="text-[10px] text-[#D1D5DB]" style={mFont}>
-                Devis généré par Les Traiteurs Engagés — {caterer.name}
+              <p className="text-[10px] text-[#6B7280] leading-snug" style={mFont}>
+                Devis émis par la plateforme {PLATFORM_INFO.name}, agissant en qualité de mandataire du Traiteur {caterer.name || "—"}.
+              </p>
+              <p className="text-[10px] text-[#6B7280] leading-snug" style={mFont}>
+                La prestation de restauration sera réalisée par le Traiteur {caterer.name || "—"}, seul responsable de son exécution.
+              </p>
+              <p className="text-[10px] text-[#6B7280] leading-snug" style={mFont}>
+                Ce devis est soumis aux conditions générales de vente du traiteur.
+              </p>
+              <p className="text-[10px] text-[#6B7280] leading-snug mt-2" style={mFont}>
+                Les frais de service plateforme correspondent aux services de mise en relation, coordination et gestion administrative.
               </p>
             </div>
           </div>

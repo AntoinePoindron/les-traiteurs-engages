@@ -25,6 +25,7 @@ export default async function EditRequestPage({ params }: PageProps) {
       id, status, client_user_id, company_id, company_service_id,
       is_compare_mode,
       event_date, event_start_time, event_end_time, event_address,
+      event_zip_code, event_city,
       guest_count, description,
       service_type, is_full_day, service_type_secondary,
       dietary_vegetarian, dietary_vegetarian_count,
@@ -57,6 +58,8 @@ export default async function EditRequestPage({ params }: PageProps) {
     event_start_time: string | null;
     event_end_time: string | null;
     event_address: string | null;
+    event_zip_code: string | null;
+    event_city: string | null;
     guest_count: number | null;
     description: string | null;
     service_type: string | null;
@@ -132,6 +135,8 @@ export default async function EditRequestPage({ params }: PageProps) {
     eventStartTime: request.event_start_time ?? "",
     eventEndTime: request.event_end_time ?? "",
     eventAddress: request.event_address ?? "",
+    eventZipCode: request.event_zip_code ?? "",
+    eventCity:    request.event_city ?? "",
     guestCount: request.guest_count ? String(request.guest_count) : "",
     eventDescription: request.description ?? "",
     companyServiceId: request.company_service_id ?? "",

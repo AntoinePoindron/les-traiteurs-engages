@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { ChevronRight, Users, Calendar, Euro, ShoppingBag } from "lucide-react";
 import StatusBadge from "@/components/ui/StatusBadge";
+import { dismissNotifications } from "@/lib/notifications";
 import type { OrderStatus } from "@/types/database";
 
 type OrderFilter = "all" | "confirmed" | "delivered" | "invoiced" | "paid" | "disputed";
@@ -31,12 +32,48 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
+// Badge label + variant override quand un virement est en cours.
+// Miroir de la page détail (caterer/orders/[id]/page.tsx).
+function catererStatusLabel(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): string | undefined {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "Virement en cours";
+  }
+  return undefined;
+}
+
+function catererStatusVariant(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): "confirmed" | "delivered" | "invoiced" | "paid" | "disputed" | "pending" {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "pending";
+  }
+  return status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed";
+}
+
 export default async function CatererOrdersPage({ searchParams }: PageProps) {
   const { filter } = await searchParams;
   const activeFilter = (filter as OrderFilter) || "all";
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // ── Dismissal contextuel (liste) — filet de sécurité ──
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_accepted", "invoice_paid", "payment_failed", "order_cancelled", "dispute_opened"],
+    });
+  }
 
   const { data: profileData } = await supabase
     .from("users").select("caterer_id").eq("id", user!.id).single();
@@ -45,7 +82,8 @@ export default async function CatererOrdersPage({ searchParams }: PageProps) {
   let query = supabase
     .from("orders")
     .select(`
-      id, status, delivery_date, delivery_address, created_at,
+      id, status, delivery_date, delivery_address, created_at, updated_at,
+      bank_transfer_declared_at,
       quotes!inner (
         id, reference, total_amount_ht, caterer_id,
         quote_requests!inner (
@@ -55,7 +93,8 @@ export default async function CatererOrdersPage({ searchParams }: PageProps) {
       )
     `)
     .eq("quotes.caterer_id", catererId)
-    .order("delivery_date", { ascending: true });
+    // Tri par défaut : la plus récemment mise à jour d'abord.
+    .order("updated_at", { ascending: false });
 
   if (activeFilter !== "all") {
     query = query.eq("status", activeFilter);
@@ -69,6 +108,7 @@ export default async function CatererOrdersPage({ searchParams }: PageProps) {
     delivery_date: string;
     delivery_address: string;
     created_at: string;
+    bank_transfer_declared_at: string | null;
     quotes: {
       id: string;
       reference: string | null;
@@ -198,7 +238,16 @@ export default async function CatererOrdersPage({ searchParams }: PageProps) {
 
                         {/* Badge + chevron */}
                         <div className="flex items-center gap-3 shrink-0">
-                          <StatusBadge variant={order.status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"} />
+                          <StatusBadge
+                            variant={catererStatusVariant(
+                              order.status,
+                              order.bank_transfer_declared_at,
+                            )}
+                            customLabel={catererStatusLabel(
+                              order.status,
+                              order.bank_transfer_declared_at,
+                            )}
+                          />
                           <ChevronRight size={14} className="text-[#D1D5DB] group-hover:text-[#9CA3AF] transition-colors" />
                         </div>
                       </div>

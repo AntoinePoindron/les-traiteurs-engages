@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { dismissNotifications } from "@/lib/notifications";
 import Link from "next/link";
 import {
   Building2, Users, Euro, Plus, Trash2,
-  BarChart3,
+  BarChart3, HeartHandshake, Briefcase, Info,
 } from "lucide-react";
-import type { CompanyService, CompanyEmployee } from "@/types/database";
+import type { CompanyService, CompanyEmployee, CatererStructureType } from "@/types/database";
+import { STRUCTURE_TYPE_GROUP } from "@/types/database";
 import {
   createServiceAction,
   updateServiceAction,
@@ -24,7 +26,11 @@ import { CheckCircle, XCircle } from "lucide-react";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
-type Tab = "services" | "effectifs" | "depenses";
+// On a fusionné les anciens tabs `services` et `effectifs` en un seul
+// (clé `services` conservée pour compat avec les redirects des server
+// actions). La clé `effectifs` acceptée en entrée (URL legacy) est
+// normalisée vers `services` plus bas.
+type Tab = "services" | "depenses";
 
 interface PageProps {
   searchParams: Promise<{
@@ -40,7 +46,11 @@ interface PageProps {
 
 export default async function ClientTeamPage({ searchParams }: PageProps) {
   const { tab, action, edit: editEmployeeId, error: pageError } = await searchParams;
-  const activeTab: Tab = (tab as Tab) || "services";
+  // Normalise la clé `effectifs` (legacy, avant la fusion) vers `services`
+  // pour que les anciens liens (emails, bookmarks) continuent de pointer
+  // au bon endroit.
+  const normalizedTab = tab === "effectifs" ? "services" : tab;
+  const activeTab: Tab = (normalizedTab as Tab) || "services";
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -49,6 +59,16 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
   const { data: profile } = await supabase
     .from("users").select("company_id, role").eq("id", user!.id).single();
   const companyId = (profile as { company_id: string | null; role: string } | null)?.company_id ?? null;
+
+  // ── Dismissal contextuel ──
+  // L'admin client arrive sur l'onglet Effectifs → on dégage les notifs
+  // "collaborateur en attente de validation". On ne scope pas par tab
+  // (si l'admin est sur services puis clique Effectifs, même logique —
+  // il a vu la page, il gère).
+  await dismissNotifications({
+    userId: currentUserId,
+    types: ["collaborator_pending"],
+  });
 
   // ── Fetch services ───────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,16 +109,25 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
     created_at: string;
   }[] = pendingMembersRaw ?? [];
 
-  // ── Fetch dépenses par service ───────────────────────────────
-  // orders → quotes → quote_requests.company_service_id → company_services
-  // On récupère TOUTES les commandes de la company (peu importe quel
-  // membre les a passées), pas seulement celles de l'admin connecté.
+  // ── Fetch dépenses pour le suivi impact social ─────────────
+  // orders → quotes → quote_requests.company_service_id (bar chart)
+  //        → quotes.caterers.structure_type (SIAE vs STPA)
+  //        → quotes.caterer_id (comptage prestataires distincts)
+  // Filtré sur l'année en cours uniquement (le suivi impact se
+  // raisonne sur l'exercice calendaire).
+  const CURRENT_YEAR = new Date().getFullYear();
+  const yearStart = `${CURRENT_YEAR}-01-01T00:00:00Z`;
+  const yearEnd   = `${CURRENT_YEAR + 1}-01-01T00:00:00Z`;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: ordersForExpenses } = await (supabase as any)
     .from("orders")
     .select(`
+      created_at,
       quotes!inner (
         total_amount_ht,
+        caterer_id,
+        caterers ( id, structure_type ),
         quote_requests!inner (
           company_id,
           company_service_id
@@ -106,22 +135,57 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
       )
     `)
     .eq("quotes.quote_requests.company_id", companyId ?? "")
-    .in("status", ["confirmed", "delivered", "invoiced", "paid"]);
+    .in("status", ["confirmed", "delivered", "invoiced", "paid"])
+    .gte("created_at", yearStart)
+    .lt("created_at", yearEnd);
 
-  // Agrégation des dépenses par service
+  // ── Agrégations ─────────────────────────────────────────────
+  // Tous les traiteurs de la plateforme sont inclusifs par définition
+  // (ESAT, EA, EI, ACI). Donc "achats inclusifs" = total des commandes.
+  // Le montant `total_amount_ht` est le HT du devis traiteur, hors
+  // frais de mise en relation et hors commission plateforme.
   const spendByService: Record<string, number> = {};
+  const spendByGroup: Record<"STPA" | "SIAE", number> = { STPA: 0, SIAE: 0 };
+  const distinctCatererIds = new Set<string>();
+
   for (const order of ordersForExpenses ?? []) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sid = (order as any).quotes?.quote_requests?.company_service_id;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const amount = Number((order as any).quotes?.total_amount_ht ?? 0);
+    const o: any = order;
+    const sid = o.quotes?.quote_requests?.company_service_id as string | null;
+    const amount = Number(o.quotes?.total_amount_ht ?? 0);
+    const catererId = o.quotes?.caterer_id as string | null;
+    const structureType = o.quotes?.caterers?.structure_type as
+      | CatererStructureType
+      | null;
+
     if (sid) {
       spendByService[sid] = (spendByService[sid] ?? 0) + amount;
     }
+    if (structureType) {
+      const group = STRUCTURE_TYPE_GROUP[structureType];
+      if (group) spendByGroup[group] = (spendByGroup[group] ?? 0) + amount;
+    }
+    if (catererId) distinctCatererIds.add(catererId);
   }
 
-  const totalSpent = Object.values(spendByService).reduce((s, v) => s + v, 0);
+  const totalSpent = (ordersForExpenses ?? []).reduce(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (sum: number, o: any) => sum + Number(o.quotes?.total_amount_ht ?? 0),
+    0,
+  );
   const totalBudget = services.reduce((s, sv) => s + (sv.annual_budget ?? 0), 0);
+
+  // Estimation du nombre de postes en insertion soutenus.
+  // Ratio de ~45K€ TTC par poste annuel (estimation sectorielle sur
+  // un échantillon non représentatif — c'est une convention de calcul,
+  // pas un chiffre exact).
+  const JOBS_PER_EURO = 1 / 45_000;
+  const estimatedJobsSupported = Math.round(totalSpent * JOBS_PER_EURO);
+
+  // Répartition en pourcentage (évite division par zéro)
+  const stpaPct = totalSpent > 0 ? Math.round((spendByGroup.STPA / totalSpent) * 100) : 0;
+  const siaePct = totalSpent > 0 ? Math.round((spendByGroup.SIAE / totalSpent) * 100) : 0;
+  const distinctCaterersCount = distinctCatererIds.size;
 
   // Comptage effectifs par service
   const countByService: Record<string, number> = {};
@@ -144,7 +208,7 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
             className="font-display font-bold text-4xl text-black"
             style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
           >
-            Équipe & services
+            Équipe
           </h1>
 
           {/* KPIs rapides */}
@@ -157,9 +221,8 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
           {/* Tabs */}
           <div className="flex gap-2 flex-wrap">
             {([
-              { key: "services",  label: "Services",         icon: Building2 },
-              { key: "effectifs", label: "Effectifs",        icon: Users },
-              { key: "depenses",  label: "Dépenses",         icon: BarChart3 },
+              { key: "services",  label: "Services & Effectifs", icon: Users },
+              { key: "depenses",  label: "Suivi impact social", icon: HeartHandshake },
             ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => {
               const isActive = activeTab === key;
               return (
@@ -180,12 +243,106 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
             })}
           </div>
 
-          {/* ── TAB : SERVICES ── */}
+          {/* ── TAB : SERVICES & EFFECTIFS (fusionné) ── */}
           {activeTab === "services" && (
             <div className="flex flex-col gap-4">
 
-              {/* Bouton "Nouveau service" → ouvre la modale */}
-              <div className="flex justify-end">
+              {/* Bandeau d'erreur (échec d'invitation effectif) */}
+              {pageError === "email_exists" && (
+                <div
+                  className="bg-white rounded-lg px-4 py-3 border-l-4"
+                  style={{ borderLeftColor: "#DC2626" }}
+                >
+                  <p className="text-xs font-bold text-[#DC2626]" style={mFont}>
+                    Cet email est déjà associé à un compte existant — invitation impossible.
+                  </p>
+                </div>
+              )}
+
+              {/* Bandeau demandes d'adhésion en attente (compact) */}
+              {pendingMembers.length > 0 && (
+                <div
+                  className="bg-white rounded-lg px-4 py-3 flex flex-col gap-1.5 border-l-4"
+                  style={{ borderLeftColor: "#F59E0B" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-black" style={mFont}>
+                      Demandes d&apos;adhésion
+                    </p>
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: "#FEF3C7", color: "#B45309", ...mFont }}
+                    >
+                      {pendingMembers.length}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col divide-y divide-[#F3F4F6]">
+                    {pendingMembers.map((member) => {
+                      const fullName = [member.first_name, member.last_name]
+                        .filter(Boolean)
+                        .join(" ") || member.email;
+                      const mInitials =
+                        ((member.first_name?.[0] ?? "") + (member.last_name?.[0] ?? "")).toUpperCase() ||
+                        member.email[0].toUpperCase();
+                      const askedAt = new Date(member.created_at).toLocaleDateString("fr-FR", {
+                        day: "numeric", month: "short",
+                      });
+                      return (
+                        <div key={member.id} className="py-2 flex items-center gap-3">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                            style={{ backgroundColor: "#F59E0B", ...mFont }}
+                          >
+                            {mInitials}
+                          </div>
+                          <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-black truncate" style={mFont}>
+                              {fullName}
+                            </span>
+                            <span className="text-[11px] text-[#9CA3AF] truncate" style={mFont}>
+                              {member.email} · {askedAt}
+                            </span>
+                          </div>
+                          <form action={approveMembershipAction} className="shrink-0">
+                            <input type="hidden" name="user_id" value={member.id} />
+                            <button
+                              type="submit"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-white hover:opacity-90 transition-opacity"
+                              style={{ backgroundColor: "#16A34A", ...mFont }}
+                              title="Valider l'adhésion"
+                            >
+                              <CheckCircle size={11} />
+                              Valider
+                            </button>
+                          </form>
+                          <form action={rejectMembershipAction} className="shrink-0">
+                            <input type="hidden" name="user_id" value={member.id} />
+                            <button
+                              type="submit"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                              style={mFont}
+                              title="Refuser l'adhésion"
+                            >
+                              <XCircle size={11} />
+                              Refuser
+                            </button>
+                          </form>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ─────────────── Section SERVICES ─────────────── */}
+              <div className="flex items-center justify-between">
+                <h2
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Services
+                </h2>
                 <ServiceModal
                   action={createServiceAction}
                   defaultOpen={action === "add-service"}
@@ -287,108 +444,15 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
                   </div>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* ── TAB : EFFECTIFS ── */}
-          {activeTab === "effectifs" && (
-            <div className="flex flex-col gap-4">
-
-              {/* Bandeau d'erreur (échec d'invitation) */}
-              {pageError === "email_exists" && (
-                <div
-                  className="bg-white rounded-lg px-4 py-3 border-l-4"
-                  style={{ borderLeftColor: "#DC2626" }}
+              {/* ─────────────── Section EFFECTIFS ─────────────── */}
+              <div className="flex items-center justify-between mt-2">
+                <h2
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                 >
-                  <p className="text-xs font-bold text-[#DC2626]" style={mFont}>
-                    Cet email est déjà associé à un compte existant — invitation impossible.
-                  </p>
-                </div>
-              )}
-
-              {/* Bandeau demandes d'adhésion en attente (compact) */}
-              {pendingMembers.length > 0 && (
-                <div
-                  className="bg-white rounded-lg px-4 py-3 flex flex-col gap-1.5 border-l-4"
-                  style={{ borderLeftColor: "#F59E0B" }}
-                >
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-bold text-black" style={mFont}>
-                      Demandes d&apos;adhésion
-                    </p>
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: "#FEF3C7", color: "#B45309", ...mFont }}
-                    >
-                      {pendingMembers.length}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col divide-y divide-[#F3F4F6]">
-                    {pendingMembers.map((member) => {
-                      const fullName = [member.first_name, member.last_name]
-                        .filter(Boolean)
-                        .join(" ") || member.email;
-                      const initials =
-                        ((member.first_name?.[0] ?? "") + (member.last_name?.[0] ?? "")).toUpperCase() ||
-                        member.email[0].toUpperCase();
-                      const askedAt = new Date(member.created_at).toLocaleDateString("fr-FR", {
-                        day: "numeric", month: "short",
-                      });
-                      return (
-                        <div key={member.id} className="py-2 flex items-center gap-3">
-                          {/* Avatar */}
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                            style={{ backgroundColor: "#F59E0B", ...mFont }}
-                          >
-                            {initials}
-                          </div>
-
-                          {/* Infos sur une ligne */}
-                          <div className="flex-1 min-w-0 flex items-baseline gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-black truncate" style={mFont}>
-                              {fullName}
-                            </span>
-                            <span className="text-[11px] text-[#9CA3AF] truncate" style={mFont}>
-                              {member.email} · {askedAt}
-                            </span>
-                          </div>
-
-                          {/* Actions */}
-                          <form action={approveMembershipAction} className="shrink-0">
-                            <input type="hidden" name="user_id" value={member.id} />
-                            <button
-                              type="submit"
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-white hover:opacity-90 transition-opacity"
-                              style={{ backgroundColor: "#16A34A", ...mFont }}
-                              title="Valider l'adhésion"
-                            >
-                              <CheckCircle size={11} />
-                              Valider
-                            </button>
-                          </form>
-                          <form action={rejectMembershipAction} className="shrink-0">
-                            <input type="hidden" name="user_id" value={member.id} />
-                            <button
-                              type="submit"
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#DC2626] border border-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
-                              style={mFont}
-                              title="Refuser l'adhésion"
-                            >
-                              <XCircle size={11} />
-                              Refuser
-                            </button>
-                          </form>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Bouton "Ajouter" → ouvre la modale */}
-              <div className="flex justify-end">
+                  Effectifs
+                </h2>
                 <EmployeeModal
                   mode="add"
                   services={services.map((s) => ({ id: s.id, name: s.name }))}
@@ -508,38 +572,157 @@ export default async function ClientTeamPage({ searchParams }: PageProps) {
             </div>
           )}
 
-          {/* ── TAB : DÉPENSES ── */}
+          {/* ── TAB : SUIVI IMPACT SOCIAL ── */}
           {activeTab === "depenses" && (
             <div className="flex flex-col gap-4">
 
-              {/* Résumé global */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-5 flex flex-col gap-2">
-                  <p className="text-xs text-[#6B7280]" style={mFont}>Budget annuel total</p>
-                  <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    {totalBudget > 0 ? totalBudget.toLocaleString("fr-FR") + " €" : "—"}
-                  </p>
+              {/* Montant total des achats inclusifs (bandeau pleine largeur) */}
+              <div
+                className="rounded-lg p-6 flex items-center gap-5"
+                style={{ backgroundColor: "#1A3A52", color: "white" }}
+              >
+                <div
+                  className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+                >
+                  <HeartHandshake size={22} />
                 </div>
-                <div className="bg-white rounded-lg p-5 flex flex-col gap-2">
-                  <p className="text-xs text-[#6B7280]" style={mFont}>Total dépensé (commandes)</p>
-                  <p className="font-display font-bold text-2xl text-black" style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}>
-                    {totalSpent > 0 ? totalSpent.toLocaleString("fr-FR") + " €" : "—"}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs opacity-80" style={mFont}>
+                    Montant total des achats inclusifs en {CURRENT_YEAR}
                   </p>
-                  {totalBudget > 0 && totalSpent > 0 && (
-                    <p className="text-xs text-[#9CA3AF]" style={mFont}>
-                      {Math.round((totalSpent / totalBudget) * 100)} % du budget consommé
-                    </p>
-                  )}
+                  <p
+                    className="font-display font-bold text-3xl"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    {totalSpent > 0 ? totalSpent.toLocaleString("fr-FR") + " € HT" : "—"}
+                  </p>
+                  <p className="text-[11px] opacity-70 mt-1" style={mFont}>
+                    Somme des dépenses sur l&apos;année, HT, hors frais de mise en relation &amp; de commission.
+                  </p>
                 </div>
               </div>
 
-              {/* Détail par service */}
+              {/* Répartition SIAE / STPA (2 colonnes) */}
               <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
                 <p
                   className="font-display font-bold text-xl text-black"
                   style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
                 >
-                  Dépenses par service
+                  Répartition des achats inclusifs
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <ImpactGroupCard
+                    title="STPA"
+                    subtitle="Travail protégé &amp; adapté (ESAT, EA)"
+                    amount={spendByGroup.STPA}
+                    pct={stpaPct}
+                    color="#6B7C4A"
+                    mFont={mFont}
+                  />
+                  <ImpactGroupCard
+                    title="SIAE"
+                    subtitle="Insertion par l&apos;activité économique (EI, ACI)"
+                    amount={spendByGroup.SIAE}
+                    pct={siaePct}
+                    color="#C4714A"
+                    mFont={mFont}
+                  />
+                </div>
+                {/* Barre répartition (mini visualisation) */}
+                {totalSpent > 0 && (
+                  <div className="flex h-2 rounded-full overflow-hidden">
+                    {spendByGroup.STPA > 0 && (
+                      <div
+                        style={{
+                          width: `${stpaPct}%`,
+                          backgroundColor: "#6B7C4A",
+                        }}
+                      />
+                    )}
+                    {spendByGroup.SIAE > 0 && (
+                      <div
+                        style={{
+                          width: `${siaePct}%`,
+                          backgroundColor: "#C4714A",
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Postes soutenus + prestataires distincts (2 colonnes) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Postes en insertion soutenus */}
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "#F0F4F7" }}
+                    >
+                      <Briefcase size={17} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                      <p className="text-xs text-[#6B7280]" style={mFont}>
+                        Postes en insertion soutenus
+                      </p>
+                      {/* Tooltip d'info — hover */}
+                      <span className="group relative inline-flex items-center">
+                        <Info size={12} className="text-[#9CA3AF] cursor-help" />
+                        <span
+                          className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 rounded shadow-lg z-10 text-[11px] font-normal leading-snug text-left"
+                          style={{ backgroundColor: "#1A3A52", color: "#FFF", ...mFont }}
+                          role="tooltip"
+                        >
+                          Il s&apos;agit d&apos;une estimation basée sur le
+                          mode de calcul d&apos;un échantillon non
+                          représentatif de l&apos;ensemble des prestataires
+                          inclusifs (~45&nbsp;000&nbsp;€ / poste annuel).
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  <p
+                    className="font-display font-bold text-3xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    {estimatedJobsSupported > 0 ? estimatedJobsSupported : "—"}
+                  </p>
+                </div>
+
+                {/* Nombre de prestataires inclusifs */}
+                <div className="bg-white rounded-lg p-6 flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "#F0F4F7" }}
+                    >
+                      <Users size={17} style={{ color: "#1A3A52" }} />
+                    </div>
+                    <p className="text-xs text-[#6B7280]" style={mFont}>
+                      Prestataires inclusifs mobilisés
+                    </p>
+                  </div>
+                  <p
+                    className="font-display font-bold text-3xl text-black"
+                    style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                  >
+                    {distinctCaterersCount > 0 ? distinctCaterersCount : "—"}
+                  </p>
+                  <p className="text-[11px] text-[#9CA3AF]" style={mFont}>
+                    Traiteurs différents sollicités depuis le {String(CURRENT_YEAR)}.
+                  </p>
+                </div>
+              </div>
+
+              {/* Répartition des achats par service (bar chart, inchangé) */}
+              <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+                <p
+                  className="font-display font-bold text-xl text-black"
+                  style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+                >
+                  Répartition des achats par service
                 </p>
 
                 {services.length === 0 ? (
@@ -630,6 +813,54 @@ function MiniKpi({
         </p>
         <p className="text-[11px] text-[#6B7280]" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>{label}</p>
       </div>
+    </div>
+  );
+}
+
+function ImpactGroupCard({
+  title,
+  subtitle,
+  amount,
+  pct,
+  color,
+  mFont,
+}: {
+  title: string;
+  subtitle: string;
+  amount: number;
+  pct: number;
+  color: string;
+  mFont: React.CSSProperties;
+}) {
+  return (
+    <div
+      className="rounded-lg p-4 flex flex-col gap-2"
+      style={{ backgroundColor: "#FAFAF7" }}
+    >
+      <div className="flex items-center gap-2">
+        <div
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: color }}
+        />
+        <p className="text-sm font-bold text-black" style={mFont}>
+          {title}
+        </p>
+        <span
+          className="ml-auto text-[11px] font-bold px-1.5 py-0.5 rounded"
+          style={{ backgroundColor: color, color: "white", ...mFont }}
+        >
+          {pct} %
+        </span>
+      </div>
+      <p
+        className="font-display font-bold text-xl text-black"
+        style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+      >
+        {amount > 0 ? amount.toLocaleString("fr-FR") + " € HT" : "—"}
+      </p>
+      <p className="text-[11px] text-[#9CA3AF] leading-snug" style={mFont}>
+        {subtitle}
+      </p>
     </div>
   );
 }

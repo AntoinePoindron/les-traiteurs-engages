@@ -7,6 +7,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
 import ContactCard from "@/components/ui/ContactCard";
 import { formatDateTime } from "@/lib/format";
+import { dismissNotifications } from "@/lib/notifications";
 import type {
   QuoteRequest,
   QuoteRequestCatererStatus,
@@ -100,6 +101,19 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
   const catererId =
     (profileData as { caterer_id: string | null } | null)?.caterer_id ?? "";
 
+  // ── Dismissal contextuel ──
+  // Le traiteur arrive sur cette demande : on dégage ses notifs liées
+  // (nouvelle demande reçue, devis refusé par le client) liées à ce
+  // quote_request. Les notifs `quote_accepted` se dismissent ailleurs
+  // (elles pointent vers l'order, pas la demande).
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_request_received", "quote_refused"],
+      entityId: id,
+    });
+  }
+
   // Fetch assignment + full request + company + client user
   const { data: assignmentData } = await supabase
     .from("quote_request_caterers")
@@ -125,7 +139,7 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
         service_equipment_tables, service_equipment_other,
         service_setup, service_setup_time, service_setup_other,
         service_decoration, service_other,
-        description, message_to_caterer, status, created_at,
+        description, message_to_caterer, status, created_at, updated_at,
         companies ( name, siret, address, city, zip_code, logo_url ),
         users ( id, first_name, last_name, email )
       )
@@ -352,6 +366,15 @@ export default async function CatererRequestDetailPage({ params }: PageProps) {
               </h1>
               <p className="text-sm text-[#9CA3AF] mt-1" style={{ fontFamily: "Marianne, system-ui, sans-serif" }}>
                 Créée le {formatDateTime(request.created_at)}
+                {request.updated_at &&
+                  new Date(request.updated_at).getTime() -
+                    new Date(request.created_at).getTime() >
+                    60_000 && (
+                    <>
+                      {" · "}
+                      <span>Mise à jour le {formatDateTime(request.updated_at)}</span>
+                    </>
+                  )}
               </p>
             </div>
             <StatusBadge variant={statusVariant} />

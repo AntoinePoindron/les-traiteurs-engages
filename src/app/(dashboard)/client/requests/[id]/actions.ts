@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createNotification } from "@/lib/notifications";
 
 export async function acceptQuoteAction(formData: FormData) {
   const supabase = await createClient();
@@ -61,6 +62,43 @@ export async function acceptQuoteAction(formData: FormData) {
     .from("quote_requests")
     .update({ status: "completed" })
     .eq("id", requestId);
+
+  // ── Notifier le traiteur que son devis a été accepté ──────────
+  // On récupère le caterer owner du quote via la table quotes (caterer_id)
+  // puis on remonte à un user_id destinataire. Choix : on notifie tous les
+  // users du traiteur (role=caterer, caterer_id=...). En pratique il y en a
+  // un seul au MVP.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: quoteOwner } = await (supabase as any)
+    .from("quotes")
+    .select("caterer_id, reference, caterers(name)")
+    .eq("id", quoteId)
+    .single();
+
+  const catererIdOwner = (quoteOwner as { caterer_id: string } | null)?.caterer_id;
+  const quoteRef       = (quoteOwner as { reference: string | null } | null)?.reference ?? null;
+
+  if (catererIdOwner) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: catererUsers } = await (supabase as any)
+      .from("users")
+      .select("id")
+      .eq("caterer_id", catererIdOwner)
+      .eq("role", "caterer");
+
+    for (const cu of (catererUsers ?? []) as { id: string }[]) {
+      await createNotification({
+        userId: cu.id,
+        type: "quote_accepted",
+        title: "Votre devis a été accepté",
+        body: quoteRef
+          ? `Le client a accepté votre devis ${quoteRef}. Une nouvelle commande est en attente de prestation.`
+          : "Le client a accepté votre devis. Une nouvelle commande est en attente de prestation.",
+        relatedEntityType: "order",
+        relatedEntityId: orderId ?? null,
+      });
+    }
+  }
 
   revalidatePath(`/client/requests/${requestId}`);
   // Redirect vers la page demande avec ?accepted=<orderId> pour
@@ -149,6 +187,44 @@ export async function refuseQuoteAction(formData: FormData) {
       .eq("id", requestId);
     if (updReqErr) {
       console.error("[refuseQuoteAction] update request status failed:", updReqErr);
+    }
+  }
+
+  // ── Notifier le traiteur que son devis a été refusé ──────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: quoteOwner } = await (supabase as any)
+    .from("quotes")
+    .select("caterer_id, reference")
+    .eq("id", quoteId)
+    .single();
+
+  const catererIdOwner = (quoteOwner as { caterer_id: string } | null)?.caterer_id;
+  const quoteRef       = (quoteOwner as { reference: string | null } | null)?.reference ?? null;
+
+  if (catererIdOwner) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: catererUsers } = await (supabase as any)
+      .from("users")
+      .select("id")
+      .eq("caterer_id", catererIdOwner)
+      .eq("role", "caterer");
+
+    for (const cu of (catererUsers ?? []) as { id: string }[]) {
+      await createNotification({
+        userId: cu.id,
+        type: "quote_refused",
+        title: "Votre devis a été refusé",
+        body: quoteRef
+          ? `Le client n'a pas retenu votre devis ${quoteRef}${reason ? ` — motif : ${reason}` : "."}`
+          : `Le client n'a pas retenu votre devis${reason ? ` — motif : ${reason}` : "."}`,
+        // IMPORTANT : on référence la demande (quote_request), pas le
+        // devis lui-même, sinon le dismissal sur la page détail de la
+        // demande côté traiteur ne matche pas (elle cherche par
+        // request_id). Ça rend aussi le href de la notif plus utile —
+        // cliquer ramène sur la demande et ses devis.
+        relatedEntityType: "quote_request",
+        relatedEntityId: requestId,
+      });
     }
   }
 

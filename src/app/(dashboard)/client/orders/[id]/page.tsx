@@ -2,10 +2,14 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { TrendingUp, FileText, CreditCard, CheckCircle, Info, Calendar, MapPin, Users, Clock, Truck, ExternalLink } from "lucide-react";
+import DownloadInvoiceButton from "@/components/client/DownloadInvoiceButton";
+import BankTransferCard from "@/components/client/BankTransferCard";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
 import { formatDateTime } from "@/lib/format";
+import { dismissNotifications } from "@/lib/notifications";
+import { getBankTransferInstructions } from "@/lib/stripe/bank-transfer";
 import {
   PLATFORM_FEE_LABEL,
   PLATFORM_FEE_RATE_DISPLAY,
@@ -21,20 +25,67 @@ import type { OrderStatus } from "@/types/database";
 
 const mFont = { fontFamily: "Marianne, system-ui, sans-serif" };
 
-const ORDER_STATUS_STEPS: { status: OrderStatus; label: string }[] = [
-  { status: "confirmed", label: "À venir" },
-  { status: "delivered", label: "Livrée" },
-  { status: "invoiced",  label: "Facturée" },
-  { status: "paid",      label: "Payée" },
+// Stepper côté client : 4 étapes.
+// - "À venir"          : commande confirmée, pas encore livrée
+// - "À payer"          : livrée/facturée, pas encore réglée
+// - "Virement en cours" : le client a déclaré avoir émis un virement,
+//                         on attend la confirmation Stripe (1-3 j)
+// - "Payée"            : webhook invoice.paid reçu
+//
+// "Virement en cours" est un **pseudo-statut** (pas une colonne DB) —
+// il est dérivé de `bank_transfer_declared_at` sur une commande dont
+// le statut DB est encore `delivered`/`invoiced`. La source de vérité
+// pour "Payée" reste le statut DB `paid` (via webhook Stripe).
+type StepKey = OrderStatus | "bank_transfer_pending";
+
+const ORDER_STATUS_STEPS: { key: StepKey; label: string }[] = [
+  { key: "confirmed",              label: "À venir" },
+  { key: "invoiced",               label: "À payer" },
+  { key: "bank_transfer_pending",  label: "Virement en cours" },
+  { key: "paid",                   label: "Payée" },
 ];
 
-const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"> = {
+const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "invoiced" | "paid" | "disputed"> = {
   confirmed:  "confirmed",
-  delivered:  "delivered",
+  // `delivered` partage le même variant visuel que `invoiced` côté
+  // client (bleu, libellé "À payer" via customLabel).
+  delivered:  "invoiced",
   invoiced:   "invoiced",
   paid:       "paid",
   disputed:   "disputed",
 };
+
+function clientStatusLabel(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): string | undefined {
+  if (status === "delivered" || status === "invoiced") {
+    // Si le client a déclaré son virement, on reflète le délai SEPA
+    // via un libellé spécifique (badge jaune via clientStatusVariant).
+    if (bankTransferDeclaredAt) return "Virement en cours";
+    return "À payer";
+  }
+  return undefined;
+}
+
+/**
+ * Variant du badge : en temps normal on utilise ORDER_STATUS_VARIANT.
+ * Exception "Virement en cours" → on bascule sur `pending` (jaune)
+ * pour signaler visuellement que la commande est en attente côté
+ * paiement, distinct de l'état normal "À payer" (bleu).
+ */
+function clientStatusVariant(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): "confirmed" | "invoiced" | "paid" | "disputed" | "pending" {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "pending";
+  }
+  return ORDER_STATUS_VARIANT[status];
+}
 
 const SECTION_LABELS: Record<string, string> = {
   main:   "Prestations",
@@ -56,12 +107,25 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // ── Dismissal contextuel ──
+  // Client qui consulte sa commande : on dégage les notifs "prestation
+  // livrée" et "facture émise" liées à cette commande, peu importe
+  // comment il est arrivé ici.
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["order_delivered", "invoice_issued"],
+      entityId: id,
+    });
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: orderRaw } = await (supabase as any)
     .from("orders")
     .select(`
-      id, status, delivery_date, delivery_address, notes, created_at,
+      id, status, delivery_date, delivery_address, notes, created_at, updated_at,
       stripe_invoice_id, stripe_hosted_invoice_url,
+      bank_transfer_declared_at,
       quotes!inner (
         id, reference, total_amount_ht, amount_per_person, valorisable_agefiph,
         valid_until, notes, details,
@@ -69,7 +133,7 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
         quote_requests (
           id, title, event_date, event_start_time, event_end_time,
           event_address, guest_count, service_type, meal_type,
-          company_service_id,
+          company_service_id, client_user_id,
           company_services ( name )
         )
       )
@@ -146,7 +210,22 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
     ? new Date(order.delivery_date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : null;
 
-  const currentStepIdx = ORDER_STATUS_STEPS.findIndex((s) => s.status === order.status);
+  // Détermine l'étape active de la timeline en combinant le statut DB
+  // et la présence (ou non) de `bank_transfer_declared_at`.
+  //   - paid                                     → "Payée"
+  //   - delivered/invoiced + virement déclaré    → "Virement en cours"
+  //   - delivered/invoiced sans déclaration      → "À payer"
+  //   - confirmed                                → "À venir"
+  // `disputed` n'est pas dans les steps — on retombe sur -1 et le
+  // stepper n'a aucune étape active (acceptable, cas marginal).
+  const currentStepKey: StepKey = (() => {
+    if (order.status === "paid") return "paid";
+    if (order.status === "delivered" || order.status === "invoiced") {
+      return order.bank_transfer_declared_at ? "bank_transfer_pending" : "invoiced";
+    }
+    return order.status;
+  })();
+  const currentStepIdx = ORDER_STATUS_STEPS.findIndex((s) => s.key === currentStepKey);
 
   // ── État paiement ──────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,6 +246,32 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
   // directement sur la hosted invoice page Stripe (carte ou virement).
   const isOrderPayable = hasStripeInvoice && !hasSucceededPayment;
 
+  // ── Coordonnées bancaires pour virement (si commande payable) ──
+  // On fetche à la demande les funding instructions de Stripe pour
+  // afficher l'IBAN/BIC virtuel directement sur la page. Idempotent
+  // côté Stripe (même customer → même IBAN). On récupère le customer
+  // id du client qui a créé la demande (c'est lui qui est customer
+  // Stripe).
+  let bankInstructions: Awaited<ReturnType<typeof getBankTransferInstructions>> | null = null;
+  if (isOrderPayable) {
+    // Le customer Stripe est celui du user qui a créé la demande
+    // initiale. On le remonte via quote.quote_requests.client_user_id.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const requestUserId: string | null = (qr as any)?.client_user_id ?? null;
+    if (requestUserId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: userRow } = await (supabase as any)
+        .from("users")
+        .select("stripe_customer_id")
+        .eq("id", requestUserId)
+        .maybeSingle();
+      const stripeCustomerId = (userRow as { stripe_customer_id: string | null } | null)?.stripe_customer_id;
+      if (stripeCustomerId) {
+        bankInstructions = await getBankTransferInstructions(stripeCustomerId);
+      }
+    }
+  }
+
   return (
     <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8", minHeight: "100vh" }}>
       <div className="pt-[54px] px-6 pb-12">
@@ -186,6 +291,15 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
               </h1>
               <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
                 Créée le {formatDateTime(order.created_at)}
+                {order.updated_at &&
+                  new Date(order.updated_at).getTime() -
+                    new Date(order.created_at).getTime() >
+                    60_000 && (
+                    <>
+                      {" · "}
+                      <span>Mise à jour le {formatDateTime(order.updated_at)}</span>
+                    </>
+                  )}
               </p>
               {quote?.reference && (
                 <p className="text-sm text-[#9CA3AF]" style={mFont}>
@@ -201,7 +315,16 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                 </p>
               )}
             </div>
-            <StatusBadge variant={ORDER_STATUS_VARIANT[order.status as OrderStatus]} />
+            <StatusBadge
+              variant={clientStatusVariant(
+                order.status as OrderStatus,
+                order.bank_transfer_declared_at ?? null,
+              )}
+              customLabel={clientStatusLabel(
+                order.status as OrderStatus,
+                order.bank_transfer_declared_at ?? null,
+              )}
+            />
           </div>
 
           {/* Bannière retour Stripe */}
@@ -246,7 +369,7 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                   const isDone    = idx <= currentStepIdx;
                   const isCurrent = idx === currentStepIdx;
                   return (
-                    <div key={step.status} className="flex items-center flex-1 last:flex-none">
+                    <div key={step.key} className="flex items-center flex-1 last:flex-none">
                       <div className="flex flex-col items-center gap-1.5">
                         <div
                           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
@@ -477,23 +600,70 @@ export default async function ClientOrderDetailPage({ params, searchParams }: Pa
                     <div className="flex flex-col gap-3">
                       <p className="text-xs text-[#6B7280]" style={mFont}>
                         Votre facture est disponible. Réglez-la directement en ligne — par carte
-                        (paiement immédiat) ou par virement bancaire (IBAN fourni sur la facture).
+                        (paiement immédiat) ou par virement bancaire (coordonnées ci-dessous).
                       </p>
                       {hostedInvoiceUrl ? (
-                        <a
-                          href={hostedInvoiceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
-                          style={{ ...mFont, backgroundColor: "#1A3A52" }}
-                        >
-                          <CreditCard size={13} />
-                          Voir et payer la facture — {grandTotalTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                        </a>
+                        order.bank_transfer_declared_at ? (
+                          // Virement déclaré → on désactive le paiement par
+                          // carte pour éviter un double-paiement (l'un par
+                          // CB immédiat, l'autre par virement en transit).
+                          // Si le client change d'avis, il peut annuler sa
+                          // déclaration depuis la carte virement ci-dessous.
+                          <div className="flex flex-col gap-1">
+                            <button
+                              type="button"
+                              disabled
+                              className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-xs font-bold text-white cursor-not-allowed opacity-50"
+                              style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                            >
+                              <CreditCard size={13} />
+                              Payer par carte - {grandTotalTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                            </button>
+                            <p className="text-[11px] text-[#9CA3AF] leading-snug px-1" style={mFont}>
+                              Paiement par carte désactivé : vous avez
+                              déclaré avoir émis un virement. Annulez votre
+                              déclaration plus bas pour débloquer cette
+                              option.
+                            </p>
+                          </div>
+                        ) : (
+                          <a
+                            href={hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-xs font-bold text-white hover:opacity-90 transition-opacity"
+                            style={{ ...mFont, backgroundColor: "#1A3A52" }}
+                          >
+                            <CreditCard size={13} />
+                            Payer par carte - {grandTotalTtc.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          </a>
+                        )
                       ) : (
                         <p className="text-xs text-[#9CA3AF] italic" style={mFont}>
                           Lien de paiement en cours de génération — rafraîchissez la page dans quelques secondes.
                         </p>
+                      )}
+
+                      {/* Bouton "Télécharger la facture" */}
+                      {hasStripeInvoice && (
+                        <DownloadInvoiceButton orderId={order.id} />
+                      )}
+
+                      {/* Coordonnées virement bancaire — récupérées côté
+                          server via Stripe funding instructions. IBAN
+                          virtuel unique par customer, matching automatique
+                          sur l'invoice en attente (pas de référence à
+                          fournir par le client). */}
+                      {bankInstructions?.ok && (
+                        <BankTransferCard
+                          orderId={order.id}
+                          accountHolderName={bankInstructions.instructions.accountHolderName}
+                          bankName={bankInstructions.instructions.bankName}
+                          iban={bankInstructions.instructions.iban}
+                          bic={bankInstructions.instructions.bic}
+                          amountTtc={grandTotalTtc}
+                          declaredAt={order.bank_transfer_declared_at ?? null}
+                        />
                       )}
                     </div>
                   ) : (

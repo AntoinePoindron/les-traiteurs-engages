@@ -368,12 +368,6 @@ export default function SignupPage() {
                       );
                     })}
                   </div>
-                  <p className="mt-1.5 text-xs text-gray-medium">
-                    Secteur protégé (ESAT / EA) ou insertion professionnelle
-                    (EI / ACI). Seuls les ESAT permettent le calcul AGEFIPH
-                    côté client. Vous pourrez compléter le reste de votre
-                    fiche (logo, photos, prestations) après inscription.
-                  </p>
                 </div>
               </>
             )}

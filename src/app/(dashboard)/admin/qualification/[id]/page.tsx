@@ -49,7 +49,7 @@ export default async function AdminQualificationDetailPage({ params }: PageProps
       budget_global, budget_per_person, budget_flexibility,
       dietary_vegetarian, dietary_halal, dietary_gluten_free, dietary_bio,
       description, message_to_caterer, super_admin_notes,
-      is_compare_mode, created_at,
+      is_compare_mode, created_at, updated_at,
       companies ( name, city ),
       users!client_user_id ( id, first_name, last_name, email )
     `)
@@ -120,6 +120,15 @@ export default async function AdminQualificationDetailPage({ params }: PageProps
               </h1>
               <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
                 Déposée le {formatDateTime(req.created_at)}
+                {req.updated_at &&
+                  new Date(req.updated_at).getTime() -
+                    new Date(req.created_at).getTime() >
+                    60_000 && (
+                    <>
+                      {" · "}
+                      <span>Mise à jour le {formatDateTime(req.updated_at)}</span>
+                    </>
+                  )}
               </p>
             </div>
             <div className="shrink-0">

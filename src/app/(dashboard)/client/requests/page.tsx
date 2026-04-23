@@ -8,6 +8,7 @@ import type { QuoteRequestStatus } from "@/types/database";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import NewRequestDropdown from "@/components/client/NewRequestDropdown";
+import { dismissNotifications } from "@/lib/notifications";
 
 interface PageProps {
   searchParams: Promise<{ filter?: string; q?: string; sort?: string }>;
@@ -22,6 +23,14 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // ── Dismissal contextuel (liste) — filet de sécurité ──
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_received"],
+    });
+  }
 
   // Rôle + company de l'utilisateur (l'admin voit toute la company)
   const { data: profileData } = await supabase
@@ -40,7 +49,7 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
     .select(`
       id, title, service_type, meal_type, is_compare_mode,
       event_date, event_address, guest_count, budget_global,
-      created_at, status,
+      created_at, updated_at, status,
       quote_request_caterers ( status, caterers ( logo_url, name ) ),
       quotes ( status )
     `);
@@ -64,8 +73,9 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
     // "quotes" et "accepted" : on filtre après transformation
   }
 
-  // Tri
-  query = query.order("created_at", { ascending: sortBy === "date_asc" });
+  // Tri par défaut : la plus récemment mise à jour d'abord (updated_at DESC).
+  // `date_asc` garde l'ordre chronologique (la plus ancienne d'abord).
+  query = query.order("updated_at", { ascending: sortBy === "date_asc" });
 
   const { data: rows } = await query;
 
@@ -182,7 +192,7 @@ export default async function ClientRequestsPage({ searchParams }: PageProps) {
                 >
                   Trier par{" "}
                   <span className="font-bold text-[#1A3A52]">
-                    {sortBy === "date_asc" ? "Date croissante" : "Date décroissante"}
+                    {sortBy === "date_asc" ? "La plus ancienne" : "La plus récente"}
                   </span>
                 </span>
                 <ChevronDown size={18} className="text-[#1A3A52]" />

@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { generateUniqueCatererSlug } from "@/lib/caterer-slug";
 import type { SignupResult } from "./types";
 import type { CatererStructureType } from "@/types/database";
 
@@ -69,6 +70,23 @@ async function signupCaterer(
 
   const userId = authData.user.id;
 
+  // Génération du préfixe de facturation unique (NOT NULL en DB depuis
+  // la migration 026). On essaie 5 → 8 → 10 chars puis fallback
+  // numérique. Le callback vérifie l'unicité cross-caterer via un
+  // SELECT sur la colonne.
+  const invoicePrefix = await generateUniqueCatererSlug(
+    catererName,
+    async (slug: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (admin as any)
+        .from("caterers")
+        .select("id")
+        .eq("invoice_prefix", slug)
+        .maybeSingle();
+      return !!data;
+    },
+  );
+
   // Création de la fiche traiteur (non validée)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: createdCaterer, error: createErr } = await (admin as any)
@@ -78,6 +96,7 @@ async function signupCaterer(
       siret,
       esat_status:    esatStatus,
       structure_type: structureType,
+      invoice_prefix: invoicePrefix,
       is_validated:   false,
     })
     .select("id, name")
@@ -86,7 +105,15 @@ async function signupCaterer(
   if (createErr || !createdCaterer) {
     console.error("[signupCaterer] create caterer failed:", createErr);
     await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: "Création de la structure impossible. Réessayez." };
+    // On expose le message PG dans l'UI pour aider au diagnostic
+    // (ex. "column structure_type does not exist" = migration non
+    // appliquée ; "invalid input value for enum" = valeur d'enum
+    // manquante, migration 029 non appliquée).
+    const detail = createErr?.message ? ` (${createErr.message})` : "";
+    return {
+      ok: false,
+      error: `Création de la structure impossible${detail}. Réessayez.`,
+    };
   }
 
   // Profil user (role=caterer, caterer_id lié, active pour l'auth
@@ -125,7 +152,9 @@ async function signupCaterer(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (sa: any) => ({
       user_id:             sa.id,
-      type:                "caterer_pending_qualification",
+      // Renommé de `caterer_pending_qualification` vers `new_caterer_signup`
+      // pour unifier le catalogue côté front (cf. lib/notifications.ts).
+      type:                "new_caterer_signup",
       title:               "Nouveau traiteur à qualifier",
       body:                `${catererName} (${fullName}) vient de s'inscrire.`,
       related_entity_type: "caterer",

@@ -127,7 +127,7 @@ function FilterRow({
     <button
       type="button"
       onClick={onToggle}
-      className="flex items-center gap-2.5 w-full px-2 py-1.5 -mx-2 rounded-md hover:bg-[#F5F1E8] cursor-pointer transition-colors"
+      className="flex items-center gap-2.5 w-full px-2 py-1.5 -mx-2 rounded-md hover:bg-[#F5F1E8] cursor-pointer transition-colors text-left"
     >
       <div
         className="shrink-0 w-4 h-4 rounded-md border-[1.5px] flex items-center justify-center transition-colors"
@@ -142,7 +142,7 @@ function FilterRow({
           </svg>
         )}
       </div>
-      <span className="text-sm text-black" style={mFont}>{label}</span>
+      <span className="text-sm text-black text-left" style={mFont}>{label}</span>
     </button>
   );
 }

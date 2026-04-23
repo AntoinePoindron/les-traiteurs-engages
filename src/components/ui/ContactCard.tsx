@@ -20,6 +20,12 @@ interface ContactCardProps {
   quoteRequestId?:  string;
   orderId?:         string;
   messagesHref:     string;
+  /**
+   * Mode imbriqué : pas de fond blanc ni padding/rounded propre.
+   * Utile quand la card est déjà à l'intérieur d'un conteneur blanc
+   * (ex. bloc "Collaborateurs" qui groupe Client + Traiteur).
+   */
+  nested?:          boolean;
 }
 
 function initials(firstName: string | null, lastName: string | null, email: string | null): string {
@@ -47,6 +53,7 @@ export default function ContactCard({
   quoteRequestId,
   orderId,
   messagesHref,
+  nested = false,
 }: ContactCardProps) {
   const { label, contactLabel } = LABELS[entityType];
   const contactFullName = [contactFirstName, contactLastName].filter(Boolean).join(" ").trim();
@@ -87,7 +94,13 @@ export default function ContactCard({
   );
 
   return (
-    <div className="bg-white rounded-lg p-5 flex flex-col gap-4">
+    <div
+      className={
+        nested
+          ? "flex flex-col gap-4"
+          : "bg-white rounded-lg p-5 flex flex-col gap-4"
+      }
+    >
       {/* Logo + nom de la structure (cliquable vers la fiche publique si applicable) */}
       {publicProfileHref ? (
         <Link

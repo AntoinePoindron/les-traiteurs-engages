@@ -1,15 +1,17 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Calendar, MapPin, Users, Utensils, Clock, Truck, ExternalLink, FileText } from "lucide-react";
+import { Calendar, MapPin, Users, Utensils, Clock, Truck, FileText } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ContactCard from "@/components/ui/ContactCard";
 import SubmitButton from "@/components/ui/SubmitButton";
 import QuoteViewerButton from "@/components/caterer/QuoteViewerButton";
+import DownloadInvoiceButton from "@/components/client/DownloadInvoiceButton";
 import { formatDateTime } from "@/lib/format";
 import { generateOrderInvoice } from "@/lib/stripe/invoices";
 import { deriveInvoiceReference } from "@/lib/stripe/constants";
+import { createNotification, dismissNotifications } from "@/lib/notifications";
 import type { OrderStatus } from "@/types/database";
 
 interface PageProps {
@@ -29,6 +31,54 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   paid:        "Payée",
   disputed:    "En litige",
 };
+
+// ── Stepper — 5 étapes du parcours d'une commande côté traiteur ──
+// Ordre : confirmed → delivered → invoiced → (virement en cours) → paid
+// "bank_transfer_pending" est un pseudo-statut (pas de colonne DB),
+// dérivé de `orders.bank_transfer_declared_at` quand la commande est
+// encore en `invoiced`/`delivered`. Miroir du stepper client.
+type StepKey = OrderStatus | "bank_transfer_pending";
+
+const STATUS_STEPS: { key: StepKey; label: string }[] = [
+  { key: "confirmed",              label: "À venir" },
+  { key: "delivered",              label: "Livrée" },
+  { key: "invoiced",               label: "Facturée" },
+  { key: "bank_transfer_pending",  label: "Virement en cours" },
+  { key: "paid",                   label: "Payée" },
+];
+
+// Label override du badge principal quand le client a déclaré un
+// virement — le traiteur voit "Virement en cours" au lieu de
+// "Facturée"/"Livrée" pour refléter l'état réel du paiement.
+function catererStatusLabel(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): string | undefined {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "Virement en cours";
+  }
+  return undefined;
+}
+
+/**
+ * Variant jaune (pending) quand virement en cours, sinon variant par
+ * défaut du statut DB. Miroir de `clientStatusVariant`.
+ */
+function catererStatusVariant(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): "confirmed" | "delivered" | "invoiced" | "paid" | "disputed" | "pending" {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "pending";
+  }
+  return status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed";
+}
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
   dejeuner: "Déjeuner", diner: "Dîner", cocktail: "Cocktail",
@@ -70,9 +120,50 @@ async function advanceStatus(formData: FormData) {
   // etc.), on laisse la commande en "delivered" — le traiteur pourra
   // retenter via le bouton manuel.
   if (nextStatus === "delivered") {
+    // Pas de notif ici — c'est `generateOrderInvoice` qui émet la notif
+    // "Prestation livrée" consolidée (livraison + facture disponible)
+    // une fois la facture Stripe créée. On évite ainsi d'envoyer deux
+    // notifs dos-à-dos au client pour le même événement.
+    //
+    // En cas d'échec de la génération de facture, une notif de fallback
+    // "juste livrée" est émise depuis le catch plus bas — le client est
+    // prévenu même si la facture sera envoyée plus tard manuellement.
     const res = await generateOrderInvoice(orderId);
     if (!res.ok) {
       console.error("[advanceStatus] generateOrderInvoice failed:", res.error);
+
+      // Fallback : facture KO → notif "livrée" sans le volet facture.
+      // Le traiteur pourra retenter via le bouton manuel, et on aura
+      // une 2ᵉ notif au moment où ça passe.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: orderInfo } = await (supabase as any)
+        .from("orders")
+        .select(`
+          quotes!inner (
+            caterers ( name ),
+            quote_requests!inner (
+              title,
+              users ( id )
+            )
+          )
+        `)
+        .eq("id", orderId)
+        .single();
+
+      const clientUserId = (orderInfo as any)?.quotes?.quote_requests?.users?.id ?? null;
+      const requestTitle = (orderInfo as any)?.quotes?.quote_requests?.title ?? "votre commande";
+      const catererNameStr = (orderInfo as any)?.quotes?.caterers?.name ?? "Le traiteur";
+
+      if (clientUserId) {
+        await createNotification({
+          userId: clientUserId,
+          type: "order_delivered",
+          title: "Prestation livrée",
+          body: `${catererNameStr} a marqué la prestation « ${requestTitle} » comme livrée. La facture vous sera envoyée prochainement.`,
+          relatedEntityType: "order",
+          relatedEntityId: orderId,
+        });
+      }
     }
   }
 
@@ -104,11 +195,25 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     .from("users").select("caterer_id").eq("id", user!.id).single();
   const catererId = (profileData as { caterer_id: string | null } | null)?.caterer_id ?? "";
 
+  // ── Dismissal contextuel ──
+  // Si le traiteur avait des notifs liées à cette commande (devis accepté,
+  // paiement reçu, échec paiement), elles disparaissent dès qu'il consulte
+  // la page — peu importe comment il est arrivé ici (clic notif, lien
+  // dashboard, URL directe…).
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_accepted", "invoice_paid", "payment_failed"],
+      entityId: id,
+    });
+  }
+
   const { data: orderData } = await supabase
     .from("orders")
     .select(`
-      id, status, delivery_date, delivery_address, notes, created_at,
+      id, status, delivery_date, delivery_address, notes, created_at, updated_at,
       stripe_invoice_id, stripe_hosted_invoice_url,
+      bank_transfer_declared_at,
       quotes!inner (
         id, reference, valid_until, total_amount_ht, notes, details, caterer_id,
         quote_requests!inner (
@@ -131,8 +236,10 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
     delivery_address: string;
     notes: string | null;
     created_at: string;
+    updated_at: string;
     stripe_invoice_id: string | null;
     stripe_hosted_invoice_url: string | null;
+    bank_transfer_declared_at: string | null;
     quotes: {
       id: string;
       reference: string | null;
@@ -187,6 +294,32 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
   // `invoices` locale (conservée pour l'historique ESAT si besoin). Les
   // deux champs stripe_* sur orders suffisent à l'afficher ici.
   const hasStripeInvoice = !!order.stripe_invoice_id;
+
+  // Le client a déclaré un virement et la commande n'est pas encore
+  // payée → état intermédiaire "Virement en cours" côté traiteur. On
+  // remplace le bloc "Facture Stripe" par un bloc dédié qui explique
+  // qu'on attend la réception du virement.
+  const isBankTransferPending =
+    !!order.bank_transfer_declared_at && order.status !== "paid";
+
+  // ── Étape active du stepper ───────────────────────────────
+  //   - paid                                     → "Payée"
+  //   - invoiced/delivered + virement déclaré    → "Virement en cours"
+  //   - invoiced                                 → "Facturée"
+  //   - delivered                                → "Livrée"
+  //   - confirmed                                → "À venir"
+  // `disputed` tombe sur -1 (aucune étape active) → acceptable au MVP.
+  const currentStepKey: StepKey = (() => {
+    if (order.status === "paid") return "paid";
+    if (
+      (order.status === "invoiced" || order.status === "delivered") &&
+      order.bank_transfer_declared_at
+    ) {
+      return "bank_transfer_pending";
+    }
+    return order.status;
+  })();
+  const currentStepIdx = STATUS_STEPS.findIndex((s) => s.key === currentStepKey);
 
   // Calcul totaux depuis details
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -285,6 +418,15 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
               </h1>
               <p className="text-sm text-[#9CA3AF] mt-1" style={mFont}>
                 Créée le {formatDateTime(order.created_at)}
+                {order.updated_at &&
+                  new Date(order.updated_at).getTime() -
+                    new Date(order.created_at).getTime() >
+                    60_000 && (
+                    <>
+                      {" · "}
+                      <span>Mise à jour le {formatDateTime(order.updated_at)}</span>
+                    </>
+                  )}
               </p>
               {q.reference && (
                 <p className="text-sm text-[#9CA3AF]" style={mFont}>
@@ -295,8 +437,65 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                 </p>
               )}
             </div>
-            <StatusBadge variant={order.status as "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"} />
+            <StatusBadge
+              variant={catererStatusVariant(
+                order.status,
+                order.bank_transfer_declared_at,
+              )}
+              customLabel={catererStatusLabel(
+                order.status,
+                order.bank_transfer_declared_at,
+              )}
+            />
           </div>
+
+          {/* Stepper — 5 étapes du parcours commande. On ne l'affiche
+              pas pour les commandes en litige (parcours non linéaire) */}
+          {order.status !== "disputed" && (
+            <div className="bg-white rounded-lg p-6 flex flex-col gap-4">
+              <p
+                className="font-display font-bold text-xl text-black"
+                style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
+              >
+                Suivi de la commande
+              </p>
+              <div className="flex items-center gap-0">
+                {STATUS_STEPS.map((step, idx) => {
+                  const isDone    = idx <= currentStepIdx;
+                  const isCurrent = idx === currentStepIdx;
+                  return (
+                    <div key={step.key} className="flex items-center flex-1 last:flex-none">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                          style={{
+                            backgroundColor: isDone ? "#1A3A52" : "#F3F4F6",
+                            color: isDone ? "#FFFFFF" : "#9CA3AF",
+                            outline: isCurrent ? "2px solid #1A3A52" : "none",
+                            outlineOffset: "2px",
+                          }}
+                        >
+                          {idx + 1}
+                        </div>
+                        <p
+                          className="text-[10px] text-center whitespace-nowrap"
+                          style={{ color: isDone ? "#1A3A52" : "#9CA3AF", fontWeight: isCurrent ? 700 : 400, ...mFont }}
+                        >
+                          {step.label}
+                        </p>
+                      </div>
+                      {idx < STATUS_STEPS.length - 1 && (
+                        <div
+                          className="flex-1 h-0.5 mb-5"
+                          style={{ backgroundColor: idx < currentStepIdx ? "#1A3A52" : "#F3F4F6" }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Main layout */}
           <div className="flex gap-6 items-start">
@@ -432,7 +631,10 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                   </div>
                 )}
 
-                {hasStripeInvoice && (
+                {/* Bloc "Facture Stripe" — affiché sauf en virement en
+                    cours (dans ce cas on affiche le bloc "Virement émis"
+                    ci-dessous à la place). */}
+                {hasStripeInvoice && !isBankTransferPending && (
                   <div className="rounded-lg p-4 flex flex-col gap-3" style={{ backgroundColor: "#F5F1E8" }}>
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-black" style={mFont}>Facture Stripe</p>
@@ -446,18 +648,38 @@ export default async function CatererOrderDetailPage({ params }: PageProps) {
                       crédité du montant dû (hors commission) dès qu&apos;il
                       paiera par carte ou virement.
                     </p>
-                    {order.stripe_hosted_invoice_url && (
-                      <a
-                        href={order.stripe_hosted_invoice_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-full text-xs font-bold text-[#1A3A52] border border-[#1A3A52] hover:bg-[#1A3A52] hover:text-white transition-colors"
-                        style={mFont}
-                      >
-                        <ExternalLink size={12} />
-                        Voir la facture
-                      </a>
-                    )}
+                    {/* Téléchargement PDF uniquement — pas de lien vers
+                        la hosted invoice page : elle propose aussi le
+                        bouton "Payer", qui n'a pas de sens pour le
+                        traiteur (c'est une action du client). */}
+                    <DownloadInvoiceButton orderId={order.id} />
+                  </div>
+                )}
+
+                {/* Bloc "Virement émis" — remplace le bloc Facture Stripe
+                    quand le client a déclaré avoir émis un virement. Le
+                    traiteur voit ainsi clairement que le paiement est en
+                    route, avec le délai SEPA et le bouton de
+                    téléchargement de la facture conservé. */}
+                {hasStripeInvoice && isBankTransferPending && (
+                  <div
+                    className="rounded-lg p-4 flex flex-col gap-3"
+                    style={{ backgroundColor: "#FEF3C7" }}
+                  >
+                    <p className="text-xs font-bold" style={{ color: "#B45309", ...mFont }}>
+                      Virement émis par le client
+                    </p>
+                    <p className="text-xs leading-relaxed" style={{ color: "#78350F", ...mFont }}>
+                      Le client a déclaré avoir émis le virement le{" "}
+                      {new Date(order.bank_transfer_declared_at!).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                      . Vous serez crédité (hors commission) dès réception sur
+                      le compte Stripe — délai 1 à 3 jours ouvrés.
+                    </p>
+                    <DownloadInvoiceButton orderId={order.id} />
                   </div>
                 )}
 

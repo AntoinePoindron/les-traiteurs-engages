@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { geocodeAddress } from "@/lib/geocoding";
+import { notifySuperAdmins } from "@/lib/notifications";
 import type { WizardData } from "@/components/client/RequestWizard";
 
 // Maps wizard service type keys to the legacy meal_type enum
@@ -64,6 +65,8 @@ export async function submitQuoteRequest(
       event_start_time: data.eventStartTime || null,
       event_end_time:   data.eventEndTime || null,
       event_address:    data.eventAddress,
+      event_zip_code:   data.eventZipCode || null,
+      event_city:       data.eventCity || null,
       guest_count:      guestCount,
       description:      data.eventDescription || null,
       // Service type
@@ -126,7 +129,13 @@ export async function submitQuoteRequest(
 
   // Géocoder l'adresse de l'événement (Nominatim, non bloquant). Sert
   // au matching par rayon de livraison en mode comparer-3.
-  const coords = await geocodeAddress({ address: data.eventAddress });
+  // Géocodage : on alimente les 3 parties séparément pour maximiser
+  // la précision (Nominatim accepte structured input).
+  const coords = await geocodeAddress({
+    address: data.eventAddress,
+    zipCode: data.eventZipCode,
+    city:    data.eventCity,
+  });
   if (coords) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase as any)
@@ -155,6 +164,22 @@ export async function submitQuoteRequest(
       .from("quote_requests")
       .update({ status: "sent_to_caterers" })
       .eq("id", requestId);
+  }
+
+  // ── Notifier les super-admins qu'une nouvelle demande est à qualifier ─
+  // Uniquement en mode compare-3 (les demandes directes vers un traiteur
+  // ciblé n'ont pas besoin de qualif admin). En mode direct le qrc est
+  // déjà créé juste au-dessus et le traiteur a été notifié via la
+  // trigger sur quote_request_caterers (ou le sera quand on branchera
+  // un trigger DB). Le super-admin n'a pas à arbitrer.
+  if (isCompareMode) {
+    await notifySuperAdmins({
+      type: "new_request_to_qualify",
+      title: "Nouvelle demande à qualifier",
+      body: `${title} — à dispatcher auprès des traiteurs adaptés.`,
+      relatedEntityType: "quote_request",
+      relatedEntityId: requestId,
+    });
   }
 
   return { id: requestId };

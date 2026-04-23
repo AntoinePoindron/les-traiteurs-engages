@@ -5,6 +5,7 @@ import FilterTabs from "@/components/caterer/FilterTabs";
 import type { RequestFilter } from "@/components/caterer/FilterTabs";
 import type { QuoteRequest } from "@/types/database";
 import { ChevronDown } from "lucide-react";
+import { dismissNotifications } from "@/lib/notifications";
 
 interface PageProps {
   searchParams: Promise<{ filter?: string; q?: string; sort?: string }>;
@@ -28,6 +29,20 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
 
   const profile = profileData as { caterer_id: string | null } | null;
   const catererId = profile?.caterer_id;
+
+  // ── Dismissal contextuel (liste) ──
+  // Si le traiteur visite la liste de ses demandes, on clear toutes
+  // les notifs "nouvelle demande de devis" et "devis refusé" qui lui
+  // sont destinées. C'est un filet de sécurité au cas où la dismissal
+  // scoped par entity (page détail) n'aurait pas matché pour une
+  // raison (related_entity_id incohérent, etc.). Pas de scope entity
+  // ici — on nettoie tout ce qui concerne l'inbox "demandes".
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_request_received", "quote_refused"],
+    });
+  }
 
   // ── Pour sent/accepted/refused : filtre sur le statut du devis
   let filteredQuoteRequestIds: string[] | null = null;
@@ -87,7 +102,11 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
       break;
   }
 
-  // Tri
+  // Tri par défaut : la plus récente d'abord. On ordonne sur
+  // `quote_request_caterers.created_at` = date d'assignation du
+  // traiteur à la demande. Ordonner sur `quote_requests.updated_at`
+  // nécessiterait une vue SQL car PostgREST ne permet pas de trier
+  // le parent par colonne d'une table jointe.
   if (sortBy === "date_asc") {
     query = query.order("created_at", { ascending: true });
   } else {
@@ -181,7 +200,7 @@ export default async function CatererRequestsPage({ searchParams }: PageProps) {
                 >
                   Trier par{" "}
                   <span className="font-bold text-navy">
-                    {sortBy === "date_asc" ? "Date croissante" : "Date décroissante"}
+                    {sortBy === "date_asc" ? "La plus ancienne" : "La plus récente"}
                   </span>
                 </span>
                 <ChevronDown size={18} className="text-navy" />

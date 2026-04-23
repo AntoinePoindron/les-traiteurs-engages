@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { ChevronRight, Euro, Users, Calendar, MapPin, ShoppingBag } from "lucide-react";
+import { ChevronRight, Euro, Users, Calendar, MapPin, ShoppingBag, Building2, ChefHat } from "lucide-react";
 import { dismissNotifications } from "@/lib/notifications";
 import type { OrderStatus } from "@/types/database";
 
@@ -22,24 +22,22 @@ const PRESTATION_LABELS: Record<string, string> = {
   autre:                 "Autre",
 };
 
-// Côté client, on regroupe `delivered` et `invoiced` sous un seul libellé
-// "À payer" : la prestation est livrée et la facture est
-// émise quasi-simultanément (la génération de facture suit le marquage
-// livré dans `advanceStatus`). Le client n'a donc pas à distinguer les
-// deux états — ils sont actionnables pareil (voir la facture, la régler).
-type OrderFilter = "all" | "confirmed" | "invoiced" | "paid";
+type OrderFilter = "all" | "confirmed" | "invoiced" | "paid" | "disputed";
 
 const FILTER_TABS: { key: OrderFilter; label: string }[] = [
   { key: "all",       label: "Toutes" },
   { key: "confirmed", label: "À venir" },
   { key: "invoiced",  label: "À payer" },
   { key: "paid",      label: "Payées" },
+  { key: "disputed",  label: "Litige" },
 ];
 
-// Mapping OrderStatus (DB) → variant StatusBadge côté client.
-// `delivered` → variant `invoiced` (même couleur visuelle bleue) et
-// label override "À payer" pour uniformiser l'affichage.
-const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "invoiced" | "paid" | "disputed"> = {
+// Admin voit tous les statuts DB. `invoiced` regroupe `delivered` +
+// `invoiced` pour refléter l'UX client/traiteur.
+const ORDER_STATUS_VARIANT: Record<
+  OrderStatus,
+  "confirmed" | "invoiced" | "paid" | "disputed" | "pending"
+> = {
   confirmed:  "confirmed",
   delivered:  "invoiced",
   invoiced:   "invoiced",
@@ -47,18 +45,7 @@ const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "invoiced" | "paid
   disputed:   "disputed",
 };
 
-function clientStatusLabel(
-  status: OrderStatus,
-  bankTransferDeclaredAt: string | null = null,
-): string | undefined {
-  if (status === "delivered" || status === "invoiced") {
-    if (bankTransferDeclaredAt) return "Virement en cours";
-    return "À payer";
-  }
-  return undefined;
-}
-
-function clientStatusVariant(
+function adminStatusVariant(
   status: OrderStatus,
   bankTransferDeclaredAt: string | null = null,
 ): "confirmed" | "invoiced" | "paid" | "disputed" | "pending" {
@@ -71,75 +58,62 @@ function clientStatusVariant(
   return ORDER_STATUS_VARIANT[status];
 }
 
+function adminStatusLabel(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): string | undefined {
+  if (status === "delivered" || status === "invoiced") {
+    if (bankTransferDeclaredAt) return "Virement en cours";
+    return "À payer";
+  }
+  return undefined;
+}
+
 interface PageProps {
   searchParams: Promise<{ filter?: string }>;
 }
 
 // ── Page ───────────────────────────────────────────────────────
 
-export default async function ClientOrdersPage({ searchParams }: PageProps) {
+export default async function AdminOrdersPage({ searchParams }: PageProps) {
   const { filter } = await searchParams;
   const activeFilter = (filter as OrderFilter) || "all";
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // ── Dismissal contextuel (liste) — filet de sécurité ──
+  // Dismissal des notifs admin (litiges) — cohérent avec les autres listes.
   if (user) {
     await dismissNotifications({
       userId: user.id,
-      types: ["order_delivered", "invoice_issued"],
+      types: ["dispute_opened_admin"],
     });
   }
 
-  // Rôle + company (l'admin voit toutes les commandes de la company)
-  const { data: profileData } = await supabase
-    .from("users")
-    .select("role, company_id")
-    .eq("id", user!.id)
-    .single();
-  const profile = profileData as { role: string; company_id: string | null } | null;
-  const isAdmin = profile?.role === "client_admin";
-  const companyId = profile?.company_id ?? "";
-
-  // Pour l'admin : on filtre via quote_requests.company_id (toutes les commandes
-  // de la company, peu importe quel collaborateur les a passées).
-  // Pour le client_user : ses propres commandes uniquement (client_admin_id).
+  // Admin voit TOUTES les commandes (la RLS `orders_select` autorise
+  // auth_role() = 'super_admin' sans filtre supplémentaire).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
     .from("orders")
-    .select(
-      isAdmin
-        ? `
-      id, status, delivery_date, delivery_address, created_at, updated_at, bank_transfer_declared_at,
+    .select(`
+      id, status, delivery_date, delivery_address, created_at, updated_at,
+      bank_transfer_declared_at,
       quotes!inner (
-        total_amount_ht, valorisable_agefiph,
-        caterers ( name, city, logo_url ),
-        quote_requests!inner ( id, title, guest_count, event_date, meal_type, service_type, company_id )
+        id, reference, total_amount_ht,
+        caterers ( id, name, logo_url ),
+        quote_requests!inner (
+          id, title, guest_count, event_date, meal_type, service_type,
+          companies ( id, name, logo_url )
+        )
       )
-    `
-        : `
-      id, status, delivery_date, delivery_address, created_at, updated_at, bank_transfer_declared_at,
-      quotes!inner (
-        total_amount_ht, valorisable_agefiph,
-        caterers ( name, city, logo_url ),
-        quote_requests ( id, title, guest_count, event_date, meal_type, service_type )
-      )
-    `
-    )
-    // Tri par défaut : la plus récemment mise à jour d'abord (updated_at).
+    `)
+    // Tri par défaut : la plus récemment mise à jour d'abord.
     .order("updated_at", { ascending: false });
 
-  if (isAdmin) {
-    query = query.eq("quotes.quote_requests.company_id", companyId);
-  } else {
-    query = query.eq("client_admin_id", user!.id);
-  }
-
   if (activeFilter !== "all") {
-    // "À payer" regroupe `delivered` et `invoiced` côté
-    // client — on les fusionne dans le filtre.
     if (activeFilter === "invoiced") {
+      // "À payer" regroupe delivered + invoiced (cohérent avec
+      // client/caterer).
       query = query.in("status", ["delivered", "invoiced"]);
     } else {
       query = query.eq("status", activeFilter);
@@ -160,7 +134,7 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
             className="font-display font-bold text-4xl text-black"
             style={{ fontVariationSettings: "'SOFT' 0, 'WONK' 1" }}
           >
-            Mes commandes
+            Toutes les commandes
           </h1>
 
           {/* Tabs filtres */}
@@ -170,7 +144,7 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
               return (
                 <Link
                   key={key}
-                  href={key === "all" ? "/client/orders" : `/client/orders?filter=${key}`}
+                  href={key === "all" ? "/admin/orders" : `/admin/orders?filter=${key}`}
                   className="px-3 py-2 rounded-full text-xs font-bold transition-all"
                   style={{
                     backgroundColor: isActive ? "#1A3A52" : "#F5F1E8",
@@ -199,11 +173,11 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
               </div>
             ) : (
               <div className="flex flex-col divide-y divide-[#F3F4F6]">
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {orders.map((order: any) => {
+                {orders.map((order) => {
                   const quote = order.quotes;
                   const caterer = quote?.caterers;
                   const qr = quote?.quote_requests;
+                  const company = qr?.companies;
                   const prestationLabel =
                     PRESTATION_LABELS[qr?.service_type ?? ""] ||
                     PRESTATION_LABELS[qr?.meal_type ?? ""] ||
@@ -220,7 +194,7 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
                   return (
                     <Link
                       key={order.id}
-                      href={`/client/orders/${order.id}`}
+                      href={`/admin/orders/${order.id}`}
                       className="flex items-center gap-3 py-3.5 -mx-2 px-2 hover:bg-[#F5F1E8] rounded-lg transition-colors group"
                     >
                       {/* Icône carrée */}
@@ -235,15 +209,31 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
                       <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
                         <div className="flex flex-col gap-1 min-w-0">
 
-                          {/* Titre + traiteur */}
+                          {/* Titre + refs */}
                           <div className="flex items-baseline gap-2 flex-wrap min-w-0">
                             <p className="text-sm font-bold text-black truncate" style={mFont}>
                               {prestationLabel}
                             </p>
-                            {caterer?.name && (
+                            {quote?.reference && (
                               <p className="text-xs text-[#9CA3AF] truncate shrink-0" style={mFont}>
-                                {caterer.name}
+                                {quote.reference}
                               </p>
+                            )}
+                          </div>
+
+                          {/* Client + traiteur */}
+                          <div className="flex items-center flex-wrap gap-x-2.5 gap-y-0.5">
+                            {company?.name && (
+                              <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                                <Building2 size={10} className="shrink-0" />
+                                {company.name}
+                              </span>
+                            )}
+                            {caterer?.name && (
+                              <span className="flex items-center gap-0.5 text-xs text-[#6B7280]" style={mFont}>
+                                <ChefHat size={10} className="shrink-0" />
+                                {caterer.name}
+                              </span>
                             )}
                           </div>
 
@@ -277,11 +267,11 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
                         {/* Badge + chevron */}
                         <div className="flex items-center gap-3 shrink-0">
                           <StatusBadge
-                            variant={clientStatusVariant(
+                            variant={adminStatusVariant(
                               order.status as OrderStatus,
                               order.bank_transfer_declared_at ?? null,
                             )}
-                            customLabel={clientStatusLabel(
+                            customLabel={adminStatusLabel(
                               order.status as OrderStatus,
                               order.bank_transfer_declared_at ?? null,
                             )}
@@ -295,6 +285,7 @@ export default async function ClientOrdersPage({ searchParams }: PageProps) {
               </div>
             )}
           </div>
+
         </div>
       </div>
     </main>

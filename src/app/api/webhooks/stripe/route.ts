@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/stripe/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 // Make sure Next doesn't consume the body before we can verify the signature.
@@ -300,6 +301,39 @@ export async function POST(request: Request) {
       });
     }
 
+    // ── Notifier le traiteur que le paiement est reçu ──────────
+    // On cherche tous les users du traiteur (role=caterer) pour les
+    // notifier. En MVP il y en a un seul par traiteur.
+    if (catererId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: catererUsers } = await (admin as any)
+        .from("users")
+        .select("id")
+        .eq("caterer_id", catererId)
+        .eq("role", "caterer");
+
+      const netToCatererCents =
+        (amountPaidCents || amountDueCents) - applicationFeeCents;
+      const netToCatererEuros = (netToCatererCents / 100).toLocaleString(
+        "fr-FR",
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 },
+      );
+
+      for (const cu of (catererUsers ?? []) as { id: string }[]) {
+        await createNotification(
+          {
+            userId: cu.id,
+            type: "invoice_paid",
+            title: "Paiement reçu",
+            body: `Le client a réglé sa facture. ${netToCatererEuros} € vont être versés sur votre compte Stripe.`,
+            relatedEntityType: "order",
+            relatedEntityId: orderId,
+          },
+          admin,
+        );
+      }
+    }
+
     return NextResponse.json({ received: true });
   }
 
@@ -341,6 +375,49 @@ export async function POST(request: Request) {
     console.warn(
       `[stripe-webhook] invoice.payment_failed order=${orderId} invoice=${invoiceId}: ${failureMessage}`,
     );
+
+    // ── Notifier le traiteur de l'échec de paiement ─────────────
+    // On remonte caterer_id via la commande (pas forcément dans le
+    // metadata de l'invoice sur ce flow — Stripe retente tout seul
+    // les smart-retries, donc on ne change pas le statut commande).
+    if (orderId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: orderRow } = await (admin as any)
+        .from("orders")
+        .select("quotes!inner(caterer_id)")
+        .eq("id", orderId)
+        .single();
+
+      const catererIdFromOrder =
+        (orderRow as { quotes?: { caterer_id?: string } } | null)?.quotes
+          ?.caterer_id ?? null;
+
+      if (catererIdFromOrder) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: catererUsers } = await (admin as any)
+          .from("users")
+          .select("id")
+          .eq("caterer_id", catererIdFromOrder)
+          .eq("role", "caterer");
+
+        for (const cu of (catererUsers ?? []) as { id: string }[]) {
+          await createNotification(
+            {
+              userId: cu.id,
+              type: "payment_failed",
+              title: "Échec du paiement client",
+              body: failureMessage
+                ? `Le paiement de la facture a échoué (${failureMessage}). Stripe va relancer automatiquement.`
+                : "Le paiement de la facture a échoué. Stripe va relancer automatiquement.",
+              relatedEntityType: "order",
+              relatedEntityId: orderId,
+            },
+            admin,
+          );
+        }
+      }
+    }
+
     return NextResponse.json({ received: true });
   }
 

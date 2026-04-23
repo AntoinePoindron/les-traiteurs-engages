@@ -111,7 +111,7 @@ export async function createEmployeeAction(formData: FormData) {
   // (l'admin doit lui demander une demande d'adhésion classique).
   if (email && (await checkEmailHasAccount(email))) {
     console.error("[createEmployeeAction] email déjà utilisé par un compte:", email);
-    redirect("/client/team?tab=effectifs&error=email_exists");
+    redirect("/client/team?tab=services&error=email_exists");
   }
 
   // Insert company_employees. Si un email est saisi, on marque
@@ -143,7 +143,7 @@ export async function createEmployeeAction(formData: FormData) {
   // l'invité s'inscrira avec le même email.
 
   revalidatePath("/client/team");
-  redirect("/client/team?tab=effectifs");
+  redirect("/client/team?tab=services");
 }
 
 export async function updateEmployeeAction(formData: FormData) {
@@ -172,7 +172,7 @@ export async function updateEmployeeAction(formData: FormData) {
   }
 
   revalidatePath("/client/team");
-  redirect("/client/team?tab=effectifs");
+  redirect("/client/team?tab=services");
 }
 
 export async function updateEmployeeServiceAction(formData: FormData) {
@@ -187,7 +187,7 @@ export async function updateEmployeeServiceAction(formData: FormData) {
     .update({ service_id: service_id || null })
     .eq("id", employee_id);
   revalidatePath("/client/team");
-  redirect("/client/team?tab=effectifs");
+  redirect("/client/team?tab=services");
 }
 
 export async function deleteEmployeeAction(formData: FormData) {
@@ -257,7 +257,7 @@ export async function deleteEmployeeAction(formData: FormData) {
   }
 
   revalidatePath("/client/team");
-  redirect("/client/team?tab=effectifs");
+  redirect("/client/team?tab=services");
 }
 
 // ── Membership requests (validation des adhésions) ───────────────
@@ -381,8 +381,8 @@ export async function approveMembershipAction(formData: FormData) {
   revalidatePath("/client/team");
   // On ouvre directement la modale d'édition pour configurer poste / service
   const target = employeeIdToEdit
-    ? `/client/team?tab=effectifs&edit=${employeeIdToEdit}`
-    : "/client/team?tab=effectifs";
+    ? `/client/team?tab=services&edit=${employeeIdToEdit}`
+    : "/client/team?tab=services";
   redirect(target);
 }
 
@@ -425,5 +425,5 @@ export async function rejectMembershipAction(formData: FormData) {
   }
 
   revalidatePath("/client/team");
-  redirect("/client/team?tab=effectifs");
+  redirect("/client/team?tab=services");
 }

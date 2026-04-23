@@ -45,17 +45,13 @@ export default async function CatererDashboardPage() {
 
   // ── Fetch all dashboard data in parallel ────────────────────
 
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-
   const catererIdOrEmpty = catererId ?? "";
 
   const [
     { count: newRequestsCount },
     { count: pendingQuotesCount },
     { count: activeOrdersCount },
-    { data: monthOrders },
+    { data: realizedOrders },
     { data: assignedRequests },
     { data: upcomingOrdersData },
   ] = await Promise.all([
@@ -77,12 +73,16 @@ export default async function CatererDashboardPage() {
       .eq("quotes.caterer_id", catererIdOrEmpty)
       .eq("status", "confirmed"),
 
+    // CA réalisé depuis la création du compte : toutes les commandes
+    // dont la prestation a eu lieu (livrées, facturées, payées).
+    // Pas de filtre temporel — on veut le cumul total depuis le début.
+    // On exclut "confirmed" (pas encore livré) car sinon on parle
+    // de prévisionnel, pas de réalisé.
     supabase
       .from("orders")
       .select("quotes!inner(total_amount_ht, caterer_id)")
       .eq("quotes.caterer_id", catererIdOrEmpty)
-      .gte("created_at", startOfMonth.toISOString())
-      .in("status", ["confirmed", "delivered", "invoiced", "paid"]),
+      .in("status", ["delivered", "invoiced", "paid"]),
 
     supabase
       .from("quote_request_caterers")
@@ -116,7 +116,7 @@ export default async function CatererDashboardPage() {
       .limit(3),
   ]);
 
-  const caMonthly = (monthOrders ?? []).reduce((sum, o) => {
+  const caRealized = (realizedOrders ?? []).reduce((sum, o) => {
     const q = (o as { quotes: { total_amount_ht: number } | null }).quotes;
     return sum + (q?.total_amount_ht ?? 0);
   }, 0);
@@ -220,8 +220,8 @@ export default async function CatererDashboardPage() {
             <KpiCard icon={ShoppingBag} label="Commandes en cours"      value={String(activeOrdersCount  ?? 0)} />
             <KpiCard
               icon={TrendingUp}
-              label="CA prévisionnel"
-              value={caMonthly > 0 ? `${caMonthly.toLocaleString("fr-FR")} €` : "—"}
+              label="CA réalisé"
+              value={caRealized > 0 ? `${caRealized.toLocaleString("fr-FR")} €` : "—"}
             />
           </div>
 

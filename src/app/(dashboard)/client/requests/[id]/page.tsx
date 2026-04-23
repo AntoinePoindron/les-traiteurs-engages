@@ -17,6 +17,7 @@ import {
   computePlatformFeeDisplay,
 } from "@/lib/stripe/constants";
 import { acceptQuoteAction, refuseQuoteAction, cancelRequestAction } from "./actions";
+import { dismissNotifications } from "@/lib/notifications";
 
 interface PageProps {
   params:       Promise<{ id: string }>;
@@ -68,6 +69,18 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // ── Dismissal contextuel ──
+  // Le client consulte sa demande : on dégage les notifs "devis reçu"
+  // liées à cette demande. Les notifs de commande (livrée, facturée)
+  // sont dismissées sur la page commande, pas ici.
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      types: ["quote_received"],
+      entityId: id,
+    });
+  }
 
   // Fetch request (owned by current user)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -543,8 +556,16 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                   </div>
                 )}
 
-                {/* Demande en cours d'examen (état soumise, pas encore de devis) */}
-                {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && (
+                {/* État d'attente — wording différencié selon le mode.
+                    3 cas possibles :
+                      a) compare-3 + pending_review : l'admin n'a pas
+                         encore dispatché la demande aux traiteurs.
+                      b) direct (non-compare) : la demande est partie
+                         directement au traiteur ciblé, on attend son devis.
+                      c) compare-3 + sent_to_caterers : on masque ce
+                         bloc, c'est le "0/3 devis" de la section
+                         "Devis reçus" qui prend le relais. */}
+                {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && request.is_compare_mode && request.status === "pending_review" && (
                   <>
                     <Divider />
                     <div className="flex flex-col gap-2 py-2 items-center text-center">
@@ -552,6 +573,23 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                       <p className="text-sm font-bold text-black" style={mFont}>Demande en cours d&apos;examen</p>
                       <p className="text-xs text-[#9CA3AF]" style={mFont}>
                         Notre équipe vérifie votre demande avant de la transmettre aux traiteurs.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {visibleQuotes.length === 0 && statusVariant === "awaiting_quotes" && !request.is_compare_mode && (
+                  <>
+                    <Divider />
+                    <div className="flex flex-col gap-2 py-2 items-center text-center">
+                      <Clock size={28} className="text-[#D1D5DB]" />
+                      <p className="text-sm font-bold text-black" style={mFont}>
+                        En attente du devis
+                      </p>
+                      <p className="text-xs text-[#9CA3AF]" style={mFont}>
+                        {linkedCaterers.length > 0
+                          ? `${linkedCaterers[0].name} doit vous envoyer son devis. Vous serez notifié dès qu'il arrive.`
+                          : "Le traiteur doit vous envoyer son devis. Vous serez notifié dès qu'il arrive."}
                       </p>
                     </div>
                   </>
@@ -600,7 +638,11 @@ export default async function ClientRequestDetailPage({ params, searchParams }: 
                           clientInfo={clientInfo}
                         />
                       ))}
-                      {hasPendingQuote && !acceptedQuote && request.status !== "cancelled" && request.status !== "completed" && (
+                      {/* "Ne retenir aucun devis" : réservé au mode compare-3.
+                          En mode direct (demande ciblée vers un seul traiteur),
+                          le client refuse/accepte le devis unique — pas besoin
+                          d'action "rejeter en bloc". */}
+                      {hasPendingQuote && !acceptedQuote && request.is_compare_mode && request.status !== "cancelled" && request.status !== "completed" && (
                         <form action={cancelRequestAction}>
                           <input type="hidden" name="request_id" value={id} />
                           <button
@@ -725,6 +767,16 @@ function QuoteCard({
     logo_url: caterer?.logo_url ?? null,
   };
 
+  // Affichage TTC côté client : le client raisonne toujours en TTC (c'est
+  // ce qu'il paiera). On dérive du HT + TVA plutôt que d'utiliser le
+  // `amount_per_person` stocké (qui est HT et pas nécessairement aligné
+  // au centime avec le ratio HT/TTC après arrondis).
+  const totalHtNum = Number(quote.total_amount_ht ?? 0);
+  const totalTtcNum = totalHtNum + totalTVA;
+  const perPersonTtcNum = guestCount > 0 ? totalTtcNum / guestCount : null;
+  const fmtEur = (n: number) =>
+    n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const previewData: PreviewData = {
     reference:     quote.reference ?? "",
     validUntil:    quote.valid_until ?? "",
@@ -786,16 +838,16 @@ function QuoteCard({
           {caterer?.name ?? "Traiteur"}
         </p>
         <span className="text-sm font-bold text-black shrink-0" style={mFont}>
-          {Number(quote.total_amount_ht).toLocaleString("fr-FR")} €
+          {fmtEur(totalTtcNum)}&nbsp;€ TTC
         </span>
       </div>
 
       {/* Ligne 2 : par personne / validité / statut — infos secondaires */}
       <div className="flex items-center gap-2 text-[11px] text-[#6B7280]" style={mFont}>
-        {quote.amount_per_person != null && (
-          <span>{Number(quote.amount_per_person).toLocaleString("fr-FR")} € / pers.</span>
+        {perPersonTtcNum != null && (
+          <span>{fmtEur(perPersonTtcNum)}&nbsp;€ TTC / pers.</span>
         )}
-        {quote.amount_per_person != null && quote.valid_until && <span>·</span>}
+        {perPersonTtcNum != null && quote.valid_until && <span>·</span>}
         {quote.valid_until && (
           <span>jusqu&apos;au {new Date(quote.valid_until).toLocaleDateString("fr-FR")}</span>
         )}
@@ -807,9 +859,9 @@ function QuoteCard({
         )}
       </div>
 
-      {/* Rappel frais de mise en relation — ajoutés sur la facture finale */}
+      {/* Rappel frais de mise en relation — déjà en TTC via computePlatformFeeDisplay */}
       <p className="text-[10px] text-[#9CA3AF]" style={mFont}>
-        +&nbsp;{computePlatformFeeDisplay(Number(quote.total_amount_ht)).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}&nbsp;€ de {PLATFORM_FEE_LABEL.toLowerCase()} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%, ajoutés au devis)
+        +&nbsp;{fmtEur(computePlatformFeeDisplay(totalHtNum))}&nbsp;€ TTC de {PLATFORM_FEE_LABEL.toLowerCase()} ({Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%, ajoutés au devis)
       </p>
 
       {/* Motif du refus (si saisi) — compact */}

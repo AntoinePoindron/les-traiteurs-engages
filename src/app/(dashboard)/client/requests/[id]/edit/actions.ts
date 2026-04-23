@@ -103,6 +103,8 @@ export async function updateQuoteRequest(
     event_start_time: data.eventStartTime || null,
     event_end_time:   data.eventEndTime || null,
     event_address:    data.eventAddress,
+    event_zip_code:   data.eventZipCode || null,
+    event_city:       data.eventCity || null,
     guest_count:      guestCount,
     description:      data.eventDescription || null,
     meal_type:             toMealType(data.serviceType),
@@ -145,7 +147,11 @@ export async function updateQuoteRequest(
 
   // Re-geocode only if address changed
   if (data.eventAddress !== existing.event_address) {
-    const coords = await geocodeAddress({ address: data.eventAddress });
+    const coords = await geocodeAddress({
+      address: data.eventAddress,
+      zipCode: data.eventZipCode,
+      city:    data.eventCity,
+    });
     updatePayload.event_latitude  = coords?.lat ?? null;
     updatePayload.event_longitude = coords?.lng ?? null;
   }

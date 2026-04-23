@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { getStripeClient } from "./server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getOrCreateStripeCustomerForUser } from "./customers";
+import { createNotification } from "@/lib/notifications";
 import {
   STRIPE_CURRENCY,
   euroToCents,
@@ -372,6 +373,35 @@ export async function generateOrderInvoice(
       // On renvoie malgré tout les infos — le caterer pourra refaire
       // l'opération, la détection d'idempotence plus haut la bloquera.
     }
+
+    // ── Notifier le client : livraison + facture (notif unique) ──
+    // On fusionne ici les 2 événements "prestation livrée" et "facture
+    // émise" puisqu'ils vont toujours de paire dans le flow normal
+    // (`advanceStatus` → marquage livré → génération facture). Pas
+    // d'intérêt à spammer le client avec 2 notifs dos-à-dos.
+    //
+    // Si la facture avait déjà été générée précédemment (re-trigger
+    // manuel après échec auto), `alreadyExisted` aurait été true plus
+    // haut et on serait sorti — on n'arrive ici que sur la première
+    // émission. En cas de re-trigger après échec, la notif fallback
+    // "juste livrée" a été émise côté `advanceStatus`, puis celle-ci
+    // arrive en complément — c'est acceptable (2 notifs pour un cas
+    // dégradé, 1 notif pour le flow normal).
+    const title = invoiceReference
+      ? `Prestation livrée - facture ${invoiceReference} disponible`
+      : "Prestation livrée - facture disponible";
+
+    await createNotification(
+      {
+        userId: clientUser.id,
+        type: "order_delivered",
+        title,
+        body: `${caterer.name} a marqué la prestation comme livrée. La facture est prête à être réglée.`,
+        relatedEntityType: "order",
+        relatedEntityId: orderId,
+      },
+      admin,
+    );
 
     return {
       ok: true,

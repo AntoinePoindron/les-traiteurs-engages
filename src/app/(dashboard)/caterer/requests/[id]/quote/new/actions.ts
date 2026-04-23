@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { createNotification } from "@/lib/notifications";
 
 export type QuoteItemData = {
   id: string;
@@ -168,6 +169,48 @@ export async function saveQuote(
         .update({ status: "responded" })
         .eq("caterer_id", catererId)
         .eq("quote_request_id", payload.quote_request_id);
+    }
+
+    // ── Notifier le client que son devis est arrivé ─────────────
+    // On notifie seulement lors du premier passage en `sent` (on évite
+    // de renotifier à chaque mise à jour d'un devis déjà envoyé — sinon
+    // un traiteur qui corrige un devis 3 fois spam le client).
+    //
+    // Convention : si on est sur un UPDATE (quote_id fourni) et que le
+    // qrc était déjà `responded`/`transmitted_to_client`, on a déjà
+    // envoyé le devis auparavant → skip. Seul le cas `selected → responded`
+    // déclenche la notif.
+    const isFirstSend = qrcStatus === "selected";
+
+    if (isFirstSend) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: req } = await (supabase as any)
+        .from("quote_requests")
+        .select("client_user_id, title")
+        .eq("id", payload.quote_request_id)
+        .single();
+
+      const clientUserId = (req as { client_user_id: string | null } | null)?.client_user_id;
+      const requestTitle = (req as { title: string | null } | null)?.title ?? "votre demande";
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: catererRow } = await (supabase as any)
+        .from("caterers")
+        .select("name")
+        .eq("id", catererId)
+        .single();
+      const catererNameStr = (catererRow as { name: string } | null)?.name ?? "Un traiteur";
+
+      if (clientUserId) {
+        await createNotification({
+          userId: clientUserId,
+          type: "quote_received",
+          title: "Nouveau devis reçu",
+          body: `${catererNameStr} vient de vous envoyer un devis pour « ${requestTitle} ».`,
+          relatedEntityType: "quote_request",
+          relatedEntityId: payload.quote_request_id,
+        });
+      }
     }
 
     revalidatePath(`/caterer/requests/${payload.quote_request_id}`);

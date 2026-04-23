@@ -455,9 +455,7 @@ function TotalCard({
                 role="tooltip"
               >
                 Ces frais sont ajoutés sur la facture du client et
-                reviennent à la plateforme. Ils ne sont pas prélevés sur
-                votre prestation : vous touchez l&apos;intégralité du
-                montant TTC de la partie prestation traiteur.
+                reviennent à la plateforme.
                 <span
                   className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0"
                   style={{

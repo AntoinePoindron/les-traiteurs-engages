@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 import BackButton from "@/components/ui/BackButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import AddressAutocomplete from "@/components/client/AddressAutocomplete";
 import { submitQuoteRequest } from "@/app/(dashboard)/client/requests/new/actions";
 import { updateQuoteRequest } from "@/app/(dashboard)/client/requests/[id]/edit/actions";
 import {
@@ -25,6 +26,8 @@ export type WizardData = {
   eventStartTime: string;
   eventEndTime: string;
   eventAddress: string;
+  eventZipCode: string;
+  eventCity: string;
   guestCount: string;
   eventDescription: string;
   companyServiceId: string;
@@ -67,13 +70,192 @@ export type WizardData = {
 
 const INITIAL: WizardData = {
   serviceType: "", isFullDay: false, serviceTypeSecondary: "",
-  eventDate: "", eventStartTime: "", eventEndTime: "", eventAddress: "", guestCount: "", eventDescription: "", companyServiceId: "",
+  eventDate: "", eventStartTime: "", eventEndTime: "", eventAddress: "", eventZipCode: "", eventCity: "", guestCount: "", eventDescription: "", companyServiceId: "",
   dietVegetarian: false, dietVegetarianCount: "", dietHalal: false, dietGlutenFree: false, dietGlutenFreeCount: "", dietBio: false, dietOther: "",
   drinksWaterStill: false, drinksWaterSparkling: false, drinksSoft: false, drinksSoftDetails: "", drinksAlcohol: false, drinksAlcoholDetails: "", drinksHot: false,
   serviceWaitstaff: false, serviceWaitstaffDetails: "", serviceEquipment: false, serviceEquipmentVerres: false, serviceEquipmentNappes: false, serviceEquipmentTables: false, serviceEquipmentOther: "", serviceSetup: false, serviceSetupTime: "", serviceSetupOther: "",
   budgetGlobal: "", budgetPerPerson: "", budgetFlexibility: "10",
   messageToCaterer: "",
 };
+
+// ── Dev helpers : auto-fill aléatoire ────────────────────────
+// Utilisé par le bouton "Auto-fill" visible uniquement en dev
+// (process.env.NODE_ENV === 'development'). Permet de sauter à
+// l'étape 7 sans saisir manuellement les 40+ champs du wizard.
+
+const RANDOM_ADDRESSES: Array<{ address: string; zipCode: string; city: string }> = [
+  { address: "12 rue de la République",          zipCode: "75011", city: "Paris" },
+  { address: "45 avenue des Champs-Élysées",     zipCode: "75008", city: "Paris" },
+  { address: "8 place de la Concorde",           zipCode: "75008", city: "Paris" },
+  { address: "23 rue du Faubourg Saint-Antoine", zipCode: "75012", city: "Paris" },
+  { address: "67 boulevard Haussmann",           zipCode: "75009", city: "Paris" },
+  { address: "15 quai de la Tournelle",          zipCode: "75005", city: "Paris" },
+  { address: "3 rue Oberkampf",                  zipCode: "75011", city: "Paris" },
+  { address: "28 rue de Rivoli",                 zipCode: "75004", city: "Paris" },
+];
+
+const RANDOM_DESCRIPTIONS = [
+  "Séminaire d'équipe pour le lancement du nouveau produit. Ambiance conviviale souhaitée.",
+  "Réunion annuelle de la direction. Prestation soignée, pas de fromage fort.",
+  "Cocktail de fin d'année avec les partenaires commerciaux. Format debout, durée 2h.",
+  "Workshop produit avec les designers. Format pause gourmande, salé + sucré.",
+  "Déjeuner trimestriel du conseil d'administration. 12 personnes attendues.",
+];
+
+const RANDOM_SOFT_DETAILS = [
+  "Jus d'orange frais, Perrier, Coca-Cola zéro",
+  "Ice tea pêche, limonades artisanales, smoothies",
+  "Jus de pomme bio, cola, orangina",
+];
+
+const RANDOM_ALCOHOL_DETAILS = [
+  "Champagne brut, vin blanc Sancerre, vin rouge Bordeaux",
+  "Prosecco, chablis, côtes-du-rhône",
+  "Crémant de Loire, vin rouge Saint-Émilion",
+];
+
+const RANDOM_EQUIPMENT_OTHER = [
+  "Plateau de service en bois, bougies LED",
+  "Bar mobile, tabourets hauts",
+  "",
+];
+
+const RANDOM_SETUP_OTHER = [
+  "Prévoir un espace végétarien bien identifié",
+  "Buffet en L, 3 points de service",
+  "",
+];
+
+const RANDOM_MESSAGES = [
+  "Merci de privilégier les produits bio et locaux si possible.",
+  "Nous avons une collaboratrice en fauteuil, merci de veiller à l'accessibilité du buffet.",
+  "Vegan obligatoire pour les options végétariennes (pas d'œuf ni produits laitiers).",
+  "",
+];
+
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randBool(probabilityTrue = 0.5): boolean {
+  return Math.random() < probabilityTrue;
+}
+
+function randomFutureDate(): string {
+  // 30 à 120 jours dans le futur — évite les dates trop proches qui
+  // feraient échouer une éventuelle contrainte de délai minimum
+  const d = new Date();
+  d.setDate(d.getDate() + randInt(30, 120));
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function randomTime(hourMin: number, hourMax: number): string {
+  const h = randInt(hourMin, hourMax);
+  const m = pick([0, 15, 30, 45]);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function generateRandomWizardData(
+  defaultCompanyServiceId: string | null,
+  companyServices: { id: string; name: string }[],
+): WizardData {
+  const guestCount = randInt(15, 120);
+  const hasVeg      = randBool(0.6);
+  const hasGluten   = randBool(0.2);
+  const isCocktail  = Math.random() < 0.5;
+
+  // Heures : déjeuner (12-14h) ou dîner (19-21h) selon le type
+  const startHour = isCocktail ? randInt(18, 20) : randInt(11, 13);
+  const start = randomTime(startHour, startHour);
+  const endHour = startHour + randInt(2, 4);
+  const end = randomTime(Math.min(endHour, 23), Math.min(endHour, 23));
+
+  // Heure de setup : 30 à 90 min avant le début de l'événement.
+  // L'input est <input type="time"> → exige HH:MM. On ne peut pas mettre
+  // de texte libre du genre "1h avant" — la DB a une colonne SQL `time`.
+  const setupHour  = Math.max(0, startHour - randInt(1, 2));
+  const setupTime  = randomTime(setupHour, setupHour);
+
+  // Budget : ~40-80€ / pers, arrondi aux 100 supérieurs
+  const budgetHT = Math.ceil((guestCount * randInt(40, 80)) / 100) * 100;
+
+  const waitstaff  = randBool(0.5);
+  const equipment  = randBool(0.6);
+  const setup      = randBool(0.4);
+
+  // Sélection du service interne (company_service) : priorise celui
+  // passé en default (URL param), sinon pick aléatoire si dispo.
+  const companyServiceId =
+    defaultCompanyServiceId ||
+    (companyServices.length > 0 ? pick(companyServices).id : "");
+
+  return {
+    // Step 1
+    serviceType: pick(SERVICE_TYPES).key,
+    isFullDay: false,
+    serviceTypeSecondary: "",
+
+    // Step 2
+    eventDate: randomFutureDate(),
+    eventStartTime: start,
+    eventEndTime: end,
+    ...(() => {
+      const a = pick(RANDOM_ADDRESSES);
+      return {
+        eventAddress: a.address,
+        eventZipCode: a.zipCode,
+        eventCity:    a.city,
+      };
+    })(),
+    guestCount: String(guestCount),
+    eventDescription: pick(RANDOM_DESCRIPTIONS),
+    companyServiceId,
+
+    // Step 3 (préférences / contraintes)
+    dietVegetarian: hasVeg,
+    dietVegetarianCount: hasVeg ? String(Math.floor(guestCount * 0.2)) : "",
+    dietHalal: randBool(0.15),
+    dietGlutenFree: hasGluten,
+    dietGlutenFreeCount: hasGluten ? String(Math.floor(guestCount * 0.1)) : "",
+    dietBio: randBool(0.3),
+    dietOther: randBool(0.2) ? "Pas de fruits de mer, allergies déclarées" : "",
+
+    // Step 4 (boissons) — on active quasi systématiquement l'eau
+    drinksWaterStill:     true,
+    drinksWaterSparkling: randBool(0.7),
+    drinksSoft:           randBool(0.8),
+    drinksSoftDetails:    pick(RANDOM_SOFT_DETAILS),
+    drinksAlcohol:        isCocktail || randBool(0.5),
+    drinksAlcoholDetails: pick(RANDOM_ALCOHOL_DETAILS),
+    drinksHot:            !isCocktail && randBool(0.6),
+
+    // Step 5 (services additionnels)
+    serviceWaitstaff: waitstaff,
+    serviceWaitstaffDetails: waitstaff
+      ? `${randInt(1, 3)} serveur(s) en salle, tenue classique`
+      : "",
+    serviceEquipment:         equipment,
+    serviceEquipmentVerres:   equipment && randBool(0.8),
+    serviceEquipmentNappes:   equipment && randBool(0.7),
+    serviceEquipmentTables:   equipment && randBool(0.4),
+    serviceEquipmentOther:    equipment ? pick(RANDOM_EQUIPMENT_OTHER) : "",
+    serviceSetup:             setup,
+    serviceSetupTime:         setup ? setupTime : "",
+    serviceSetupOther:        setup ? pick(RANDOM_SETUP_OTHER) : "",
+
+    // Step 6 (budget)
+    budgetGlobal:      String(budgetHT),
+    budgetPerPerson:   "",
+    budgetFlexibility: pick(["none", "5", "10"] as const),
+
+    // Step 7 (message)
+    messageToCaterer: pick(RANDOM_MESSAGES),
+  };
+}
 
 const SERVICE_TYPES = [
   { key: "petit_dejeuner",        label: "Petit déjeuner" },
@@ -421,10 +603,22 @@ function Step2({
             <Input type="time" value={data.eventEndTime} onChange={e => update("eventEndTime", e.target.value)} placeholder="hh:mm" />
           </div>
         </div>
-        <div>
-          <Label required>Lieu de l&apos;événement</Label>
-          <Input type="text" value={data.eventAddress} onChange={e => update("eventAddress", e.target.value)} placeholder="Code postal, adresse complète" />
-        </div>
+        {/* Adresse avec autocomplete BAN (api-adresse.data.gouv.fr).
+            Le composant gère en interne les 3 inputs (rue + CP + ville)
+            et remplit automatiquement les 2 derniers quand l'utilisateur
+            sélectionne une suggestion dans le dropdown. */}
+        <AddressAutocomplete
+          address={data.eventAddress}
+          zipCode={data.eventZipCode}
+          city={data.eventCity}
+          onChange={(next) => {
+            update("eventAddress", next.address);
+            update("eventZipCode", next.zipCode);
+            update("eventCity", next.city);
+          }}
+          addressLabel="Lieu de l'événement"
+          required
+        />
         <div>
           <Label required>Nombre de personnes</Label>
           <Input type="number" min="1" value={data.guestCount} onChange={e => update("guestCount", e.target.value)} placeholder="Ex : 50" />
@@ -725,9 +919,8 @@ function Step6({ data, update }: { data: WizardData; update: <K extends keyof Wi
                   {PLATFORM_FEE_LABEL} : {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés au devis
                 </p>
                 <p className="text-xs text-[#6B7280]">
-                  Les prix affichés par les traiteurs correspondent à leur
-                  prestation. Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
-                  HT (TVA 20%) pour la mise en relation avec des ESAT et EA
+                  La plateforme Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
+                  HT (TVA 20%) pour la mise en relation avec les traiteurs
                   qualifiés et la sécurisation de votre paiement. Le total
                   figurera sur la facture.
                 </p>
@@ -818,7 +1011,17 @@ function Step7({ data, update, catererData, isCompareMode }: {
           {(data.eventStartTime || data.eventEndTime) && (
             <RecapRow label="Horaires" value={`${data.eventStartTime || "?"}h – ${data.eventEndTime || "?"}h`} />
           )}
-          <RecapRow label="Lieu" value={data.eventAddress || "—"} />
+          <RecapRow
+            label="Lieu"
+            value={
+              [
+                data.eventAddress,
+                [data.eventZipCode, data.eventCity].filter(Boolean).join(" "),
+              ]
+                .filter(Boolean)
+                .join(", ") || "—"
+            }
+          />
           <RecapRow label="Nombre de personnes" value={data.guestCount ? `${data.guestCount} personnes` : "—"} />
         </RecapSection>
 
@@ -859,9 +1062,8 @@ function Step7({ data, update, catererData, isCompareMode }: {
               {PLATFORM_FEE_LABEL} : {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}% ajoutés au devis
             </p>
             <p className="text-xs text-[#6B7280]">
-              Les prix affichés par les traiteurs correspondent à leur
-              prestation. Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
-              HT (TVA 20%) pour la mise en relation avec des ESAT et EA
+              La plateforme Les Traiteurs Engagés ajoute en sus {Math.round(PLATFORM_FEE_RATE_DISPLAY * 100)}%
+              HT (TVA 20%) pour la mise en relation avec les traiteurs
               qualifiés et la sécurisation de votre paiement. Le total
               figurera sur la facture.
             </p>
@@ -946,7 +1148,7 @@ export default function RequestWizard({
 
   const canProceed = (() => {
     if (step === 1) return !!data.serviceType && (!data.isFullDay || !!data.serviceTypeSecondary);
-    if (step === 2) return !!data.eventDate && !!data.eventAddress && !!data.guestCount;
+    if (step === 2) return !!data.eventDate && !!data.eventAddress && !!data.eventZipCode && !!data.eventCity && !!data.guestCount;
     return true;
   })();
 
@@ -955,7 +1157,7 @@ export default function RequestWizard({
       setQuitConfirmOpen(true);
       return;
     }
-    const hasData = data.serviceType || data.eventDate || data.eventAddress || data.guestCount;
+    const hasData = data.serviceType || data.eventDate || data.eventAddress || data.eventZipCode || data.eventCity || data.guestCount;
     if (hasData) {
       setQuitConfirmOpen(true);
       return;
@@ -963,14 +1165,47 @@ export default function RequestWizard({
     router.push("/client/dashboard");
   }
 
+  // ── Dev auto-fill ──
+  // Bouton visible uniquement en `next dev`. Remplit aléatoirement
+  // les 40+ champs du wizard et saute à l'étape 7 (récap). Gain de
+  // temps massif pour tester le flow E2E (création demande, qualif
+  // admin, réception devis, etc.). En production (`next build`), le
+  // check `process.env.NODE_ENV` est inlined par Next et le bouton
+  // disparaît complètement du bundle.
+  const isDev = process.env.NODE_ENV === "development";
+  function handleAutoFill() {
+    setData(
+      generateRandomWizardData(defaultCompanyServiceId, companyServices),
+    );
+    setStep(7);
+  }
+
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F5F1E8" }}>
       <div className="max-w-[720px] mx-auto px-4 pt-8 pb-32">
         <div className="flex flex-col gap-4">
-          <BackButton
-            label={isEditMode ? "Annuler les modifications" : "Quitter la demande"}
-            onClick={handleQuit}
-          />
+          <div className="flex items-center justify-between">
+            <BackButton
+              label={isEditMode ? "Annuler les modifications" : "Quitter la demande"}
+              onClick={handleQuit}
+            />
+            {isDev && !isEditMode && (
+              <button
+                onClick={handleAutoFill}
+                type="button"
+                className="px-3 py-1.5 rounded-full text-xs font-bold transition-colors cursor-pointer border border-dashed"
+                style={{
+                  borderColor: "#C4714A",
+                  color: "#C4714A",
+                  backgroundColor: "#FFF7ED",
+                  ...mFont,
+                }}
+                title="Remplit aléatoirement tous les champs et saute à l'étape 7. Visible uniquement en dev."
+              >
+                🎲 Auto-fill (dev)
+              </button>
+            )}
+          </div>
           <Stepper step={step} />
 
           {step === 1 && <Step1 data={data} update={update} catererData={catererData} />}

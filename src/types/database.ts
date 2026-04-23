@@ -226,6 +226,8 @@ export type QuoteRequest = {
   event_start_time: string | null;
   event_end_time: string | null;
   event_address: string;
+  event_zip_code: string | null;
+  event_city: string | null;
   guest_count: number;
   budget_global: number | null;
   budget_per_person: number | null;

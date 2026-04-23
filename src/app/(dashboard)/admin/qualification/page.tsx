@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { ChevronRight, Calendar, Users, MapPin, LayoutGrid } from "lucide-react";
+import { dismissNotifications } from "@/lib/notifications";
 
 // Never serve from cache: clients can edit their request at any time
 // (address, guest count, etc.), which affects the qualification queue.
@@ -27,6 +28,21 @@ export default async function AdminQualificationPage({ searchParams }: PageProps
 
   const supabase = await createClient();
 
+  // ── Dismissal contextuel ──
+  // L'admin arrive sur la page qualification : on dégage les notifs
+  // "nouveau traiteur à qualifier" et "nouvelle demande à qualifier".
+  // Pas de scope entity (liste globale), on vide tout pour cet user.
+  // Legacy : on inclut `caterer_pending_qualification` (ancien nom du
+  // type avant renommage) pour nettoyer les notifs déjà en DB.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    await dismissNotifications({
+      userId: user.id,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      types: ["new_caterer_signup", "new_request_to_qualify", "caterer_pending_qualification" as any],
+    });
+  }
+
   const statusMap: Record<QFilter, string> = {
     pending:   "pending_review",
     sent:      "sent_to_caterers",
@@ -39,13 +55,19 @@ export default async function AdminQualificationPage({ searchParams }: PageProps
     .select(`
       id, title, event_date, event_address, guest_count,
       service_type, meal_type, budget_global, budget_per_person,
-      created_at, status, super_admin_notes,
+      created_at, updated_at, status, super_admin_notes,
       companies ( name ),
       users!client_user_id ( first_name, last_name, email )
     `)
     .eq("is_compare_mode", true)
     .eq("status", statusMap[activeFilter])
-    .order("created_at", { ascending: activeFilter === "pending" });
+    // Pour l'onglet "pending" : la plus ANCIENNE d'abord (logique
+    // file d'attente qualif — on commence par celles qui attendent
+    // depuis le plus longtemps). Les autres onglets : la plus
+    // récemment mise à jour d'abord.
+    .order(activeFilter === "pending" ? "created_at" : "updated_at", {
+      ascending: activeFilter === "pending",
+    });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const requests: any[] = rows ?? [];

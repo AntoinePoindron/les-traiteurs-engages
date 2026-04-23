@@ -24,13 +24,40 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
   dejeuner: "Déjeuner", diner: "Dîner", cocktail: "Cocktail", autre: "Autre",
 };
 
-const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "delivered" | "invoiced" | "paid" | "disputed"> = {
+// Côté client on fusionne `delivered` et `invoiced` sous
+// "À payer" (même variant visuel). Cf. orders/page.tsx
+// pour le reasoning complet.
+const ORDER_STATUS_VARIANT: Record<OrderStatus, "confirmed" | "invoiced" | "paid" | "disputed"> = {
   confirmed:  "confirmed",
-  delivered:  "delivered",
+  delivered:  "invoiced",
   invoiced:   "invoiced",
   paid:       "paid",
   disputed:   "disputed",
 };
+
+function clientStatusLabel(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): string | undefined {
+  if (status === "delivered" || status === "invoiced") {
+    if (bankTransferDeclaredAt) return "Virement en cours";
+    return "À payer";
+  }
+  return undefined;
+}
+
+function clientStatusVariant(
+  status: OrderStatus,
+  bankTransferDeclaredAt: string | null = null,
+): "confirmed" | "invoiced" | "paid" | "disputed" | "pending" {
+  if (
+    bankTransferDeclaredAt &&
+    (status === "delivered" || status === "invoiced")
+  ) {
+    return "pending";
+  }
+  return ORDER_STATUS_VARIANT[status];
+}
 
 type ClientBadgeVariant =
   | "awaiting_quotes" | "quotes_received"
@@ -128,14 +155,17 @@ export default async function ClientDashboardPage() {
     recentQuery.eq("client_user_id", user!.id);
   }
 
-  // Commandes récentes
+  // Commandes récentes — on exclut les commandes `paid` et `disputed`.
+  // Le dashboard sert à surfacer ce qui est "à faire" pour le client :
+  // commandes à venir (confirmed), livrées, à payer (delivered/invoiced).
+  // Les commandes déjà payées trouvent leur place dans /client/orders.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentOrdersQuery = (supabase as any)
     .from("orders")
     .select(
       isAdmin
         ? `
-          id, status, delivery_date,
+          id, status, delivery_date, bank_transfer_declared_at,
           quotes!inner (
             total_amount_ht, valorisable_agefiph,
             caterers ( name ),
@@ -143,7 +173,7 @@ export default async function ClientDashboardPage() {
           )
         `
         : `
-          id, status, delivery_date,
+          id, status, delivery_date, bank_transfer_declared_at,
           quotes!inner (
             total_amount_ht, valorisable_agefiph,
             caterers ( name ),
@@ -151,6 +181,7 @@ export default async function ClientDashboardPage() {
           )
         `
     )
+    .in("status", ["confirmed", "delivered", "invoiced"])
     .order("created_at", { ascending: false })
     .limit(5);
   if (isAdmin) {
@@ -460,7 +491,16 @@ export default async function ClientDashboardPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <StatusBadge variant={ORDER_STATUS_VARIANT[order.status as OrderStatus]} />
+                              <StatusBadge
+                                variant={clientStatusVariant(
+                                  order.status as OrderStatus,
+                                  order.bank_transfer_declared_at ?? null,
+                                )}
+                                customLabel={clientStatusLabel(
+                                  order.status as OrderStatus,
+                                  order.bank_transfer_declared_at ?? null,
+                                )}
+                              />
                               <ChevronRight size={14} style={{ color: "#D1D5DB" }} />
                             </div>
                           </Link>
